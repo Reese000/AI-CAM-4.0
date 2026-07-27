@@ -1,0 +1,9 @@
+{
+  "deps": [],
+  "description": "Compute the magnitude of a 3D vector.",
+  "examples": [
+    "[3, 4, 0] -> 5.0"
+  ],
+  "id": "vec3_length",
+  "signature": "def vec3_length(v: list[float]) -> float"
+}

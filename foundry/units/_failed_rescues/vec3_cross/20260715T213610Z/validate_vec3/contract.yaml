@@ -1,0 +1,7 @@
+function_name: validate_vec3
+signature: 'def validate_vec3(v: tuple[float, float, float]) -> tuple[float, float,
+  float]'
+description: Validate that input is a tuple of three floats. Returns the tuple unchanged
+  if valid.
+notes: 'Input: ((1, 2, 3),) -> Output: (1, 2, 3)  Input: ((1, ''2'', 3),) -> Output:
+  raises ValueError  Input: ((1, 2),) -> Output: raises ValueError'

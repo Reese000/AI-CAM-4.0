@@ -1,0 +1,6 @@
+function_name: "render_heidenhain"
+signature: "def render_heidenhain(ir_segments: list[dict]) -> str"
+description: "Render intermediate representation to Heidenhain-style G-code"
+notes: >
+  [{'cmd': 'G1', 'x': 10.0, 'y': 0.0}] -> 'L X+10.0 Y+0.0'
+  [{'cmd': 'G2', 'x': 5.0, 'y': 5.0, 'i': 2.5, 'j': 0.0}] -> 'C X+5.0 Y+5.0 I+2.5 J+0.0'

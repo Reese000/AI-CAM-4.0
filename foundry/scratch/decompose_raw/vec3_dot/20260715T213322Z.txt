@@ -1,0 +1,28 @@
+{
+  "sub_units": [
+    {
+      "id": "vec3_component_multiply",
+      "contract": {
+        "function_name": "vec3_component_multiply",
+        "signature": "def vec3_component_multiply(a: tuple[float, float, float], b: tuple[float, float, float]) -> tuple[float, float, float]",
+        "description": "Multiply corresponding components of two 3D vectors and return the resulting vector.",
+        "notes": "((1, 2, 3), (4, 5, 6)) -> (4, 10, 18)\n((0, 0, 0), (7, 8, 9)) -> (0, 0, 0)\n((1.5, 2.5, 3.5), (2.0, 4.0, 6.0)) -> (3.0, 10.0, 21.0)"
+      },
+      "oracle_py": "from __future__ import annotations\nimport importlib.util, os, sys\nimport pytest\n\ndef _load_candidate():\n    candidate_path = os.environ.get(\"FOUNDRY_CANDIDATE_PATH\")\n    if not candidate_path:\n        pytest.fail(\"FOUNDRY_CANDIDATE_PATH env var not set; oracle cannot locate candidate\")\n    spec = importlib.util.spec_from_file_location(\"candidate_under_test\", candidate_path)\n    module = importlib.util.module_from_spec(spec)\n    sys.modules[\"candidate_under_test\"] = module\n    spec.loader.exec_module(module)\n    return module\n\n@pytest.fixture(scope=\"module\")\ndef candidate():\n    return _load_candidate()\n\ndef test_component_multiply_basic(candidate):\n    assert candidate.vec3_component_multiply((1, 2, 3), (4, 5, 6)) == (4, 10, 18)\n\ndef test_component_multiply_zero(candidate):\n    assert candidate.vec3_component_multiply((0, 0, 0), (7, 8, 9)) == (0, 0, 0)\n\ndef test_component_multiply_floats(candidate):\n    assert candidate.vec3_component_multiply((1.5, 2.5, 3.5), (2.0, 4.0, 6.0)) == pytest.approx((3.0, 10.0, 21.0))\n",
+      "deps": []
+    },
+    {
+      "id": "vec3_sum_components",
+      "contract": {
+        "function_name": "vec3_sum_components",
+        "signature": "def vec3_sum_components(v: tuple[float, float, float]) -> float",
+        "description": "Sum the three components of a 3D vector and return the total.",
+        "notes": "(1, 2, 3) -> 6.0\n(0, 0, 0) -> 0.0\n(1.5, 2.5, 3.5) -> 7.5\n(-1, 2, -3) -> -2.0"
+      },
+      "oracle_py": "from __future__ import annotations\nimport importlib.util, os, sys\nimport pytest\n\ndef _load_candidate():\n    candidate_path = os.environ.get(\"FOUNDRY_CANDIDATE_PATH\")\n    if not candidate_path:\n        pytest.fail(\"FOUNDRY_CANDIDATE_PATH env var not set; oracle cannot locate candidate\")\n    spec = importlib.util.spec_from_file_location(\"candidate_under_test\", candidate_path)\n    module = importlib.util.module_from_spec(spec)\n    sys.modules[\"candidate_under_test\"] = module\n    spec.loader.exec_module(module)\n    return module\n\n@pytest.fixture(scope=\"module\")\ndef candidate():\n    return _load_candidate()\n\ndef test_sum_components_basic(candidate):\n    assert candidate.vec3_sum_components((1, 2, 3)) == 6.0\n\ndef test_sum_components_zero(candidate):\n    assert candidate.vec3_sum_components((0, 0, 0)) == 0.0\n\ndef test_sum_components_floats(candidate):\n    assert candidate.vec3_sum_components((1.5, 2.5, 3.5)) == pytest.approx(7.5)\n\ndef test_sum_components_negative(candidate):\n    assert candidate.vec3_sum_components((-1, 2, -3)) == pytest.approx(-2.0)\n",
+      "deps": []
+    }
+  ],
+  "parent_description": "Compute dot product of two 3D vectors by first componentwise multiplying them, then summing the resulting components. Import and call the helpers: from verified.vec3_component_multiply import vec3_component_multiply; from verified.vec3_sum_components import vec3_sum_components.",
+  "parent_notes": "Example: ((1, 0, 0), (0, 1, 0)) -> 0.0\n((1, 2, 3), (4, 5, 6)) -> 32.0\n((3, 4, 0), (3, 4, 0)) -> 25.0"
+}

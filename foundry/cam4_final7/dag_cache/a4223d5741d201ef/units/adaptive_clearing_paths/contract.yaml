@@ -1,0 +1,7 @@
+function_name: "adaptive_clearing_paths"
+signature: >
+  def adaptive_clearing_paths(stock: tuple[tuple[float, float, float], tuple[float, float, float]], tool: float) -> list[tuple[float, float, float]]
+description: "Generate adaptive clearing toolpath with optimized material removal"
+notes: >
+  stock = ((0,0,0), (10,10,5)), tool = 2.0 -> [(1,1,5), (1,9,5), (9,9,5), (9,1,5), ...]
+  stock = ((-5,-5,0), (5,5,2)), tool = 1.0 -> [(-4,-4,2), (-4,4,2), (4,4,2), ...]

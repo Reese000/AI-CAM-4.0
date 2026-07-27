@@ -1,0 +1,6 @@
+function_name: "render_heidenhain"
+signature: "def render_heidenhain(ir_segments: list[dict]) -> str"
+description: "Generate Heidenhain-compatible G-code from IR"
+notes: >
+  [{'move': 'G0', 'X': 0, 'Y': 0}] -> 'L X+0 Y+0 R0 FMAX'
+  [{'move': 'G1', 'X': 10, 'F': 100}] -> 'L X+10 R0 F100'

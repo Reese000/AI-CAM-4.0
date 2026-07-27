@@ -1,0 +1,7 @@
+function_name: "vec3_cross"
+signature: >
+  def vec3_cross(a: tuple[float, float, float], b: tuple[float, float, float]) -> tuple[float, float, float]
+description: "Compute cross product of two 3D vectors"
+notes: >
+  (1.0, 0.0, 0.0) × (0.0, 1.0, 0.0) -> (0.0, 0.0, 1.0)
+  (2.0, 3.0, 4.0) × (5.0, 6.0, 7.0) -> (-3.0, 6.0, -3.0)

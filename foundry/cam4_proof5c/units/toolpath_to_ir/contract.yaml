@@ -1,0 +1,7 @@
+function_name: "toolpath_to_ir"
+signature: "def toolpath_to_ir(toolpath) -> list[dict]"
+description: >
+  Convert toolpath segments to intermediate representation with rapid/linear moves and metadata
+notes: >
+  ([((0,0,5), (10,0,0))]) -> [{"type": "move", "from": (0,0,5), "to": (10,0,0), "feed": 100.0}]
+  ([((0,0,5), (10,0,0)), ((10,0,0), (10,10,0))]) -> [{"type": "move", "from": (0,0,5), "to": (10,0,0), "feed": 100.0}, {"type": "move", "from": (10,0,0), "to": (10,10,0), "feed": 100.0}]

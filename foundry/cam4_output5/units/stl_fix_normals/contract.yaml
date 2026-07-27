@@ -1,0 +1,4 @@
+function_name: "stl_fix_normals"
+signature: "def stl_fix_normals(vertices, faces) -> list[tuple[float, float, float]]"
+description: "Ensure all face normals point outward from solid using right-hand rule"
+notes: "[(0,0,0), (1,0,0), (0,1,0)], [(0,1,2)] -> [(0.0, 0.0, 1.0)]"

@@ -1,0 +1,4 @@
+function_name: "vec3_sub"
+signature: "def vec3_sub(a, b) -> tuple[float, float, float]"
+description: "Subtract second 3D vector from first component-wise"
+notes: "(5, 7, 9), (1, 2, 3) -> (4, 5, 6)"

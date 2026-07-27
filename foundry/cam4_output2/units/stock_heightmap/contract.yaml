@@ -1,0 +1,6 @@
+function_name: "stock_heightmap"
+signature: >
+  def stock_heightmap(stock_dims: tuple[float, float, float], resolution: int) -> list[list[float]]
+description: >
+  Create a Z-map heightfield for stock simulation based on dimensions and resolution
+notes: "[(10.0, 10.0, 5.0), 2] -> [[5.0, 5.0], [5.0, 5.0]]"

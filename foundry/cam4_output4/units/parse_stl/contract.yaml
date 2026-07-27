@@ -1,0 +1,5 @@
+function_name: "parse_stl"
+signature: >
+  def parse_stl(path: str) -> Tuple[np.ndarray, np.ndarray, List[Tuple[int,int,int]]]
+description: "Parse an STL file (binary or ASCII) and return vertices, normals, and faces."
+notes: "path='model.stl' -> (vertices_array, normals_array, faces_list)"

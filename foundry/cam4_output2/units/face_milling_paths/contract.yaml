@@ -1,0 +1,6 @@
+function_name: "face_milling_paths"
+signature: >
+  def face_milling_paths(stock: tuple[tuple[float, float, float], tuple[float, float, float]], tool: dict) -> list[tuple[tuple[float, float, float], tuple[float, float, float]]]
+description: "Generate toolpath segments for face milling strategy"
+notes: >
+  [((0,0,0), (10,10,5)), {'diameter': 2.0}] -> [((0.0,5.0,0.0), (10.0,5.0,0.0)), ((0.0,5.0,0.5), (10.0,5.0,0.5))]

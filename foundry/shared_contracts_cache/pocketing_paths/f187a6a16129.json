@@ -1,0 +1,12 @@
+{
+  "deps": [
+    "bbox_from_points"
+  ],
+  "description": "Generate concentric pocket clearing toolpath from outside in",
+  "examples": [
+    "(100.0, 100.0, 10.0), 10.0 -> [(5.0, 5.0, 0.0), (95.0, 5.0, 0.0), (95.0, 95.0, 0.0), (5.0, 95.0, 0.0), (15.0, 15.0, 0.0), (85.0, 15.0, 0.0)]",
+    "(50.0, 50.0, 5.0), 5.0 -> [(2.5, 2.5, 0.0), (47.5, 2.5, 0.0), (47.5, 47.5, 0.0), (2.5, 47.5, 0.0)]"
+  ],
+  "id": "pocketing_paths",
+  "signature": "def pocketing_paths(stock_dims: tuple[float, float, float], tool_diameter: float) -> list[tuple[float, float, float]]"
+}

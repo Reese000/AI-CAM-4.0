@@ -1,0 +1,6 @@
+function_name: "render_fanuc"
+signature: "def render_fanuc(ir_segments: list[dict]) -> str"
+description: "Generate Fanuc-compatible G-code from IR"
+notes: >
+  [{'move': 'G0', 'X': 0, 'Y': 0}] -> 'G0 X0 Y0\n'
+  [{'move': 'G1', 'X': 10, 'F': 100}] -> 'G1 X10 F100\n'

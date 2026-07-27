@@ -1,0 +1,5 @@
+function_name: "stl_fix_normals"
+signature: >
+  def stl_fix_normals(vertices: list[list[float]], faces: list[tuple[int,int,int]]) -> list[list[float]]
+description: "Fix inverted normals by comparing with face winding order"
+notes: "([v0,v1,v2], [(0,1,2)]) -> corrected normals list"

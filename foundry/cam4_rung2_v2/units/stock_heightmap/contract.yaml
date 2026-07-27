@@ -1,0 +1,4 @@
+function_name: "stock_heightmap"
+signature: "def stock_heightmap(stock_dims, resolution) -> tuple"
+description: "Create a Z-map heightfield for a stock at given dimensions and resolution."
+notes: "(10,10,10), (0.1) -> (heightmap_grid, z_min, z_max)"

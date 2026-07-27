@@ -1,0 +1,7 @@
+function_name: "stl_fix_normals"
+signature: >
+  def stl_fix_normals(vertices: list[list[float]], faces: list[list[int]]) -> tuple[list[list[float]], list[list[int]]]
+description: "Fix inverted STL normals to point outward"
+notes: >
+  (([0.0,0.0,0.0], [1.0,0.0,0.0], [0.0,1.0,0.0]), [[0,1,2]]) -> (([0.0,0.0,0.0], [1.0,0.0,0.0], [0.0,1.0,0.0]), [[0,1,2]])
+  (([0.0,0.0,0.0], [0.0,1.0,0.0], [1.0,0.0,0.0]), [[0,1,2]]) -> (([0.0,0.0,0.0], [0.0,1.0,0.0], [1.0,0.0,0.0]), [[0,1,2]])

@@ -1,0 +1,13 @@
+{
+  "deps": [
+    "toolpath_to_ir",
+    "vec3_length"
+  ],
+  "description": "Render Heidenhain G-code from intermediate representation",
+  "examples": [
+    "[{'type': 'line', 'start': (0,0,0), 'end': (10,0,0), 'feed': 100}] -> '0 BEGIN PGM 1\\n1 L X+0 Y+0 Z+0 R0 F100\\n2 L X+10 Y+0 Z+0\\n3 END PGM 1'",
+    "[{'type': 'line', 'start': (10,0,0), 'end': (10,10,0), 'feed': 100}] -> '0 BEGIN PGM 1\\n1 L X+10 Y+0 Z+0 R0 F100\\n2 L X+10 Y+10 Z+0\\n3 END PGM 1'"
+  ],
+  "id": "render_heidenhain",
+  "signature": "def render_heidenhain(ir_segments: list[dict[str, any]]) -> str"
+}

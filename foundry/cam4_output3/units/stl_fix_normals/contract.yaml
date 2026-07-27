@@ -1,0 +1,4 @@
+function_name: "stl_fix_normals"
+signature: "def stl_fix_normals(vertices, faces) -> list[tuple[float,float,float]]"
+description: "Fixes inverted normals based on winding order."
+notes: "vertices, faces_with_inverted_normal -> corrected_normals"

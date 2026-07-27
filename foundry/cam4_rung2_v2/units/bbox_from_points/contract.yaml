@@ -1,0 +1,5 @@
+function_name: "bbox_from_points"
+signature: "def bbox_from_points(points) -> tuple"
+description: >
+  Compute the axis-aligned bounding box from a list of points. Returns (min_point, max_point).
+notes: "[(0,0,0), (1,2,3)] -> ((0,0,0), (1,2,3))"

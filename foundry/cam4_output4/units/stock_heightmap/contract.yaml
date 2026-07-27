@@ -1,0 +1,4 @@
+function_name: "stock_heightmap"
+signature: "def stock_heightmap(stock_dims: np.ndarray, resolution: float) -> np.ndarray"
+description: "Create a Z-map heightfield representing the stock material."
+notes: "stock_dims=[10,10,5], resolution=1.0 -> heightmap array of shape (11,11)"

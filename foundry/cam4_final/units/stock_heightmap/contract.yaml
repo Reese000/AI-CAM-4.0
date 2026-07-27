@@ -1,0 +1,6 @@
+function_name: "stock_heightmap"
+signature: >
+  def stock_heightmap(stock_dims: Tuple[float, float, float], resolution: Tuple[int, int, int]) -> np.ndarray
+description: "Create Z-map heightfield stock model with specified dimensions"
+notes: >
+  ((100.0, 100.0, 50.0), (100, 100, 1)) -> np.ndarray(shape=(100, 100), dtype=float)

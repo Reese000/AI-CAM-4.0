@@ -1,0 +1,7 @@
+function_name: "stl_fix_normals"
+signature: >
+  def stl_fix_normals(vertices: list[tuple[float, float, float]], faces: list[tuple[int, int, int]]) -> list[tuple[float, float, float]]
+description: "Reorient inverted normals using cross product consistency"
+notes: >
+  (vertices, faces) where one normal inverted -> corrected normals list
+  Already consistent normals unchanged

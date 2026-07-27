@@ -1,0 +1,4 @@
+function_name: "vec3_cross"
+signature: "def vec3_cross(a, b) -> tuple"
+description: "Compute the cross product of two 3D vectors."
+notes: "(1,0,0), (0,1,0) -> (0,0,1)"

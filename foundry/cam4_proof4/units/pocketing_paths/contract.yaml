@@ -1,0 +1,8 @@
+function_name: "pocketing_paths"
+signature: >
+  def pocketing_paths(stock, tool) -> list[tuple[tuple[float, float, float], tuple[float, float, float]]]
+description: >
+  Generate pocket clearing toolpath for internal regions with stock and tool parameters
+notes: >
+  (({"pockets": [((20,20,0), (80,80,5))]}, {"diameter": 8.0, "stepover": 4.0})) -> [((24,24,5), (76,24,5)), ((76,28,5), (24,28,5))] (simplified spiral)
+  (({"pockets": [((10,10,0), (40,40,3))]}, {"diameter": 10.0, "stepover": 5.0})) -> [((15,15,3), (35,15,3)), ((35,20,3), (15,20,3))] (simplified spiral)

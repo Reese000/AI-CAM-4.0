@@ -1,0 +1,5 @@
+function_name: "stl_fix_normals"
+signature: >
+  def stl_fix_normals(vertices: List[Tuple[float, float, float]], faces: List[Tuple[int, int, int]]) -> List[Tuple[float, float, float]]
+description: "Ensure all face normals point outward consistently"
+notes: "(vertices, faces) -> [(0.0, 0.0, 1.0), ...]"

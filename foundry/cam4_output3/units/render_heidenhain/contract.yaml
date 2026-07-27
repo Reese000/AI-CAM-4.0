@@ -1,0 +1,5 @@
+function_name: "render_heidenhain"
+signature: "def render_heidenhain(ir_segments: list[dict]) -> str"
+description: "Renders Heidenhain G-code from IR segments."
+notes: >
+  [{'start':(0.0,0.0,0.0), 'end':(10.0,0.0,0.0), 'feed':100.0}] -> '0 BEGIN PGM\n1 L X+0.0 Y+0.0 Z+0.0 F100.0\n2 L X+10.0 Y+0.0 Z+0.0\n3 END PGM'

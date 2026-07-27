@@ -1,0 +1,23 @@
+{
+  "superseded": [],
+  "verified": {
+    "parse_gcode": {
+      "content_sha256": "8b91a6f4a735f34a856e2be0f14b031f07b8c810f8ea63b0e1936955bdfd8c62",
+      "oracle_sha256": "9c04177a50ea496ce1a1f8d6f2662e9d233b6392a49d4b86b167a8de787ad955",
+      "session_id": "c4d869f6-11ec-4a44-bb93-89879f3978f9",
+      "verified_at": "2026-07-16T18:46:31+00:00"
+    },
+    "vec3_length": {
+      "content_sha256": "3342a0708d4da2ee49565b50511d70e1d5db28d9ed52df3d772c5655c75699cd",
+      "oracle_sha256": "77528dc832019441990bb3161dfbfb01903700302a0b929b652010660b24cab4",
+      "session_id": "c4d869f6-11ec-4a44-bb93-89879f3978f9",
+      "verified_at": "2026-07-16T18:41:16+00:00"
+    },
+    "vec3_normalize": {
+      "content_sha256": "ecf6200402d15a4d450ee88cf17827507c298a05fb26459e29f69a6179c80220",
+      "oracle_sha256": "5131880201149f8faf4e5e242c00be6e6c26367d2539237ec6e8a87e405789df",
+      "session_id": "c4d869f6-11ec-4a44-bb93-89879f3978f9",
+      "verified_at": "2026-07-16T18:42:19+00:00"
+    }
+  }
+}

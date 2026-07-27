@@ -1,0 +1,7 @@
+function_name: "bbox_from_points"
+signature: >
+  def bbox_from_points(points) -> tuple[tuple[float, float, float], tuple[float, float, float]]
+description: "Compute axis-aligned bounding box from a list of 3D points"
+notes: >
+  [(0.0, 0.0, 0.0), (5.0, 10.0, 2.0)] -> ((0.0, 0.0, 0.0), (5.0, 10.0, 2.0))
+  [(-1.0, -2.0, -3.0), (1.0, 2.0, 3.0), (0.0, 0.0, 0.0)] -> ((-1.0, -2.0, -3.0), (1.0, 2.0, 3.0))

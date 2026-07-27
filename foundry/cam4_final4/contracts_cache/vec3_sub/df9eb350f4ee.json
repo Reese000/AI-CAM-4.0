@@ -1,0 +1,10 @@
+{
+  "deps": [],
+  "description": "Subtract two 3D vectors",
+  "examples": [
+    "(4, 5, 6) - (1, 2, 3) -> (3, 3, 3)",
+    "(0, 0, 0) - (-1, -2, -3) -> (1, 2, 3)"
+  ],
+  "id": "vec3_sub",
+  "signature": "def vec3_sub(a, b) -> tuple[float, float, float]"
+}

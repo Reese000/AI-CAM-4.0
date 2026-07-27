@@ -1,0 +1,5 @@
+function_name: "parse_stl"
+signature: "def parse_stl(path: str) -> dict"
+description: "Parse binary or ASCII STL file into vertices, normals, and face indices"
+notes: >
+  'model.stl' -> {'vertices': [(0.0, 0.0, 0.0), ...], 'normals': [(0.0, 0.0, 1.0), ...], 'faces': [(0, 1, 2), ...]}

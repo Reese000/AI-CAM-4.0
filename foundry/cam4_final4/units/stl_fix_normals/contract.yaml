@@ -1,0 +1,7 @@
+function_name: "stl_fix_normals"
+signature: >
+  def stl_fix_normals(vertices: list[tuple[float, float, float]], faces: list[tuple[int, int, int]]) -> list[tuple[float, float, float]]
+description: "Ensure all face normals point outward"
+notes: >
+  vertices=[(0,0,0),(1,0,0),(0,1,0)], faces=[(0,1,2)] -> [computed_outward_normal]
+  vertices with consistent orientation -> same_normals

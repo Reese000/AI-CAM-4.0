@@ -1,0 +1,5 @@
+function_name: "simulate_toolpath"
+signature: "def simulate_toolpath(stock, toolpath) -> list"
+description: "Simulate material removal by a toolpath on a stock heightmap, return frames."
+notes: >
+  stock (heightmap), toolpath (list of segments) -> list of frames (each frame is a heightmap snapshot)

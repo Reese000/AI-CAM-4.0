@@ -1,0 +1,13 @@
+{
+  "deps": [
+    "bbox_from_points",
+    "vec3_add",
+    "vec3_length"
+  ],
+  "description": "Generate adaptive clearing toolpath for efficient material removal.",
+  "examples": [
+    "stock and tool parameters -> list of toolpath points"
+  ],
+  "id": "adaptive_clearing_paths",
+  "signature": "def adaptive_clearing_paths(stock: dict, tool: dict) -> list[list[float]]"
+}

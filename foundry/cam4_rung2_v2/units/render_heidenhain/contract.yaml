@@ -1,0 +1,4 @@
+function_name: "render_heidenhain"
+signature: "def render_heidenhain(ir_segments) -> str"
+description: "Render Heidenhain G-code from IR segments."
+notes: "IR segments -> string of Heidenhain G-code"

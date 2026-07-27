@@ -1,0 +1,28 @@
+{
+  "sub_units": [
+    {
+      "id": "validate_vec3",
+      "contract": {
+        "function_name": "validate_vec3",
+        "signature": "def validate_vec3(v: tuple[float, float, float]) -> tuple[float, float, float]",
+        "description": "Validate that input is a tuple of three floats. Returns the tuple unchanged if valid.",
+        "notes": "Input: ((1, 2, 3),) -> Output: (1, 2, 3)  Input: ((1, '2', 3),) -> Output: raises ValueError  Input: ((1, 2),) -> Output: raises ValueError"
+      },
+      "oracle_py": "from __future__ import annotations\nimport importlib.util, os, sys\nimport pytest\n\ndef _load_candidate():\n    candidate_path = os.environ.get(\"FOUNDRY_CANDIDATE_PATH\")\n    if not candidate_path:\n        pytest.fail(\"FOUNDRY_CANDIDATE_PATH env var not set; oracle cannot locate candidate\")\n    spec = importlib.util.spec_from_file_location(\"candidate_under_test\", candidate_path)\n    module = importlib.util.module_from_spec(spec)\n    sys.modules[\"candidate_under_test\"] = module\n    spec.loader.exec_module(module)\n    return module\n\n@pytest.fixture(scope=\"module\")\ndef candidate():\n    return _load_candidate()\n\ndef test_validate_vec3_valid(candidate):\n    assert candidate.validate_vec3((1, 2, 3)) == (1, 2, 3)\n\ndef test_validate_vec3_invalid_type(candidate):\n    with pytest.raises(ValueError):\n        candidate.validate_vec3((1, \"2\", 3))\n\ndef test_validate_vec3_invalid_length(candidate):\n    with pytest.raises(ValueError):\n        candidate.validate_vec3((1, 2))",
+      "deps": []
+    },
+    {
+      "id": "compute_cross_components",
+      "contract": {
+        "function_name": "compute_cross_components",
+        "signature": "def compute_cross_components(a: tuple[float, float, float], b: tuple[float, float, float]) -> tuple[float, float, float]",
+        "description": "Compute the cross product of two 3D vectors using component-wise formulas.",
+        "notes": "Input: ((1, 0, 0), (0, 1, 0)) -> Output: (0, 0, 1)  Input: ((0, 1, 0), (0, 0, 1)) -> Output: (1, 0, 0)  Input: ((1, 2, 3), (4, 5, 6)) -> Output: (-3, 6, -3)"
+      },
+      "oracle_py": "from __future__ import annotations\nimport importlib.util, os, sys\nimport pytest\n\ndef _load_candidate():\n    candidate_path = os.environ.get(\"FOUNDRY_CANDIDATE_PATH\")\n    if not candidate_path:\n        pytest.fail(\"FOUNDRY_CANDIDATE_PATH env var not set; oracle cannot locate candidate\")\n    spec = importlib.util.spec_from_file_location(\"candidate_under_test\", candidate_path)\n    module = importlib.util.module_from_spec(spec)\n    sys.modules[\"candidate_under_test\"] = module\n    spec.loader.exec_module(module)\n    return module\n\n@pytest.fixture(scope=\"module\")\ndef candidate():\n    return _load_candidate()\n\ndef test_compute_cross_basic_1(candidate):\n    assert candidate.compute_cross_components((1, 0, 0), (0, 1, 0)) == (0, 0, 1)\n\ndef test_compute_cross_basic_2(candidate):\n    assert candidate.compute_cross_components((0, 1, 0), (0, 0, 1)) == (1, 0, 0)\n\ndef test_compute_cross_general(candidate):\n    assert candidate.compute_cross_components((1, 2, 3), (4, 5, 6)) == (-3, 6, -3)",
+      "deps": []
+    }
+  ],
+  "parent_description": "Compute cross product of two 3D vectors. First validate each input tuple is a 3‑float vector using validate_vec3, then compute the cross product using compute_cross_components and return the result.",
+  "parent_notes": "((1, 0, 0), (0, 1, 0)) -> (0, 0, 1) ((0, 1, 0), (0, 0, 1)) -> (1, 0, 0) ((1, 2, 3), (4, 5, 6)) -> (-3, 6, -3)"
+}

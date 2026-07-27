@@ -1,0 +1,5 @@
+function_name: "pocketing_paths"
+signature: "def pocketing_paths(stock, tool) -> list[dict]"
+description: "Generate offset-based toolpaths for pocket clearing operation"
+notes: >
+  {'bbox': ((0,0,0),(100,100,10))}, {'diameter': 10.0} -> [{'type': 'line', ...}, {'type': 'arc', ...}]

@@ -1,0 +1,12 @@
+{
+  "deps": [
+    "vec3_add",
+    "vec3_length"
+  ],
+  "description": "Fix inverted normals in STL data by ensuring consistent orientation.",
+  "examples": [
+    "vertices and faces from parse_stl -> corrected normals list"
+  ],
+  "id": "stl_fix_normals",
+  "signature": "def stl_fix_normals(vertices: list[list[float]], faces: list[list[int]]) -> list[list[float]]"
+}

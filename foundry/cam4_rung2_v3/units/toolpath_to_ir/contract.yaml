@@ -1,0 +1,6 @@
+function_name: "toolpath_to_ir"
+signature: "def toolpath_to_ir(toolpath: list[dict]) -> list[dict]"
+description: "Convert toolpath to intermediate representation for post-processors"
+notes: >
+  [{'start': (0,0,0), 'end': (10,0,0), 'type': 'cut'}] -> [{'move': 'G1', 'X': 10, 'Y': 0, 'Z': 0}]
+  Mixed rapid and cut moves -> IR with G0/G1 commands

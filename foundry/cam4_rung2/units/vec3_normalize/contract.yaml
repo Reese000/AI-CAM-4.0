@@ -1,0 +1,4 @@
+function_name: "vec3_normalize"
+signature: "def vec3_normalize(v: list[float]) -> list[float]"
+description: "Convert vector to unit length (magnitude 1)"
+notes: "[0, 0, 5] -> [0.0, 0.0, 1.0]"

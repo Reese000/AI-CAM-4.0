@@ -1,0 +1,4 @@
+function_name: "vec3_normalize"
+signature: "def vec3_normalize(v: tuple) -> tuple"
+description: "Return a unit vector in the same direction as the input vector."
+notes: "(3, 4, 0) -> (0.6, 0.8, 0.0)"

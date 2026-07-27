@@ -1,0 +1,5 @@
+function_name: "parse_stl"
+signature: >
+  def parse_stl(path: str) -> tuple[list[list[float]], list[list[float]], list[tuple[int,int,int]]]
+description: "Parse STL file (binary/ASCII) into vertices, normals, faces"
+notes: "'cube.stl' -> ([[0,0,0],...], [[0,0,1],...], [(0,1,2),...])"

@@ -1,0 +1,5 @@
+function_name: "toolpath_to_ir"
+signature: "def toolpath_to_ir(toolpath) -> list"
+description: "Convert a toolpath to an intermediate representation (IR) for post-processors."
+notes: >
+  toolpath segments -> IR segments (list of dictionaries with move type and coordinates)

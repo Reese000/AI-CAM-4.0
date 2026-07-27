@@ -1,0 +1,6 @@
+function_name: "face_milling_paths"
+signature: "def face_milling_paths(stock: dict, tool: dict) -> list[dict]"
+description: "Generate zig-zag face milling toolpath for top surface"
+notes: >
+  stock={'dims': (100,100,10)}, tool={'diameter': 10} -> list of points with rapid/cut moves
+  stock={'dims': (200,100,5)}, tool={'diameter': 20} -> denser path

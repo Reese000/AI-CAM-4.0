@@ -1,0 +1,5 @@
+function_name: "face_milling_paths"
+signature: >
+  def face_milling_paths(stock: Tuple[np.ndarray, np.ndarray], tool: Dict) -> List[Tuple[np.ndarray, np.ndarray]]
+description: "Generate toolpath segments for face milling a stock."
+notes: "stock=([0,0,0],[10,10,5]), tool={'diameter': 2.0} -> toolpath_segments"

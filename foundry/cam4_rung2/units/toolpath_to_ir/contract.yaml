@@ -1,0 +1,4 @@
+function_name: "toolpath_to_ir"
+signature: "def toolpath_to_ir(toolpath: list[dict]) -> list[dict]"
+description: "Convert toolpath to intermediate representation for post-processors"
+notes: "[{'type':'line',...}] -> [{'ir':'move', 'coords':[x,y,z]}]"

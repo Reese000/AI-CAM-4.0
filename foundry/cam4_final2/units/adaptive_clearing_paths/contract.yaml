@@ -1,0 +1,4 @@
+function_name: "adaptive_clearing_paths"
+signature: "def adaptive_clearing_paths(stock: dict, tool: dict) -> list[list[list[float]]]"
+description: "Generate adaptive clearing toolpath for roughing."
+notes: "stock={dims}, tool={diameter} -> list of adaptive clearing paths"

@@ -1,0 +1,17 @@
+{
+  "superseded": [],
+  "verified": {
+    "vec3_length": {
+      "content_sha256": "469c2ebc1d726bc163a1af79f7a3bf515c9ab6cabefe361b29b32888c677ee62",
+      "oracle_sha256": "26820ab9411526c7ffb5aa8ac7dd2dcd9463bb2e114720b5df7103fb176d30c6",
+      "session_id": "6b0bb638-ff58-49e9-845c-4570cf772e14",
+      "verified_at": "2026-07-15T23:14:27+00:00"
+    },
+    "vec3_normalize": {
+      "content_sha256": "2bca780291e50157f9f066677d42b4b61aecd0d0efd3e848fb3719a3226540fc",
+      "oracle_sha256": "ba84919fc12770bcbebf574a9aaceb88be484a9052961a8770c38ba9c2002cf7",
+      "session_id": "6b0bb638-ff58-49e9-845c-4570cf772e14",
+      "verified_at": "2026-07-15T23:15:28+00:00"
+    }
+  }
+}

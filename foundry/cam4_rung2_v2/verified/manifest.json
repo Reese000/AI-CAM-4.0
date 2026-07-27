@@ -1,0 +1,47 @@
+{
+  "superseded": [],
+  "verified": {
+    "parse_gcode": {
+      "content_sha256": "15b871666805a6b818740043231f245c0d95b2cc34ba3166e64183ccdf83628c",
+      "oracle_sha256": "4d2e34acc763648a924988cf7238cdc3537e2c50fea8e5328b1975debc397e6f",
+      "session_id": "26f80413-9c09-410b-b273-cb2a3bc8d398",
+      "verified_at": "2026-07-16T18:15:34+00:00"
+    },
+    "vec3_add": {
+      "content_sha256": "54cf29f96094d1781fb699691e2e7117dfbc9a182afc68c5d42a9d100799e4a0",
+      "oracle_sha256": "7e966ff1329d6ad02f3cbf41ddbfd083250b46c326f6494d23f15caa507adb0e",
+      "session_id": "26f80413-9c09-410b-b273-cb2a3bc8d398",
+      "verified_at": "2026-07-16T18:14:31+00:00"
+    },
+    "vec3_cross": {
+      "content_sha256": "88312e02a939a2cdaf374fe43ee2126ab40e385aca0b38af027aab7a33ea33fa",
+      "oracle_sha256": "508f674cef7fa08f76007ffd48225ad44a64a7469a72922165618064c1c5ed69",
+      "session_id": "26f80413-9c09-410b-b273-cb2a3bc8d398",
+      "verified_at": "2026-07-16T18:14:37+00:00"
+    },
+    "vec3_dot": {
+      "content_sha256": "a4a6f8cc49f9a8b3f989a3d0fe7e8226ff458a449feee68214bb446964c3563b",
+      "oracle_sha256": "5ab77da5cc23bf9998c356e8dc04b840736fd39da2ff85799d1ce1175c15272f",
+      "session_id": "26f80413-9c09-410b-b273-cb2a3bc8d398",
+      "verified_at": "2026-07-16T18:14:30+00:00"
+    },
+    "vec3_length": {
+      "content_sha256": "8b3e5ee9dac5186f53484190ccf22f9cdd3b6f0adbe787345d4f41fcac2d9119",
+      "oracle_sha256": "876ed1f9a2a00a1d986b0099035e2412fb88710dea5e43762058aecb34ab6d8c",
+      "session_id": "26f80413-9c09-410b-b273-cb2a3bc8d398",
+      "verified_at": "2026-07-16T18:14:52+00:00"
+    },
+    "vec3_normalize": {
+      "content_sha256": "6a5e74c60ed4f45cc435a1ee8bd2b75c67e282b3ba0f12c8d903d3c1865c5da0",
+      "oracle_sha256": "5ec4139e67ab96bfc65ad3dcf0239bc7d42d534c0d821a3dcb72b530a885839e",
+      "session_id": "26f80413-9c09-410b-b273-cb2a3bc8d398",
+      "verified_at": "2026-07-16T18:14:59+00:00"
+    },
+    "vec3_sub": {
+      "content_sha256": "c6173ac821132deddc110523be00b95fdd577d8112b66f6c4d159d8bc388ce62",
+      "oracle_sha256": "444267dd1db969eaccbc0bb9c9b269b2efda4d3332b1ceac4b9eeeb633fa88a1",
+      "session_id": "26f80413-9c09-410b-b273-cb2a3bc8d398",
+      "verified_at": "2026-07-16T18:14:30+00:00"
+    }
+  }
+}

@@ -1,0 +1,85 @@
+# AI CAM 4.0 DAG — Foundry-compatible unit definitions
+# Each unit is a single function with a contract and oracle
+
+units:
+  # Layer 0: Vec3 primitives (no deps)
+  - id: vec3_add
+    path: units/vec3_add
+    deps: []
+  - id: vec3_sub
+    path: units/vec3_sub
+    deps: []
+  - id: vec3_dot
+    path: units/vec3_dot
+    deps: []
+  - id: vec3_cross
+    path: units/vec3_cross
+    deps: []
+  - id: vec3_length
+    path: units/vec3_length
+    deps: []
+  - id: vec3_normalize
+    path: units/vec3_normalize
+    deps: []
+
+  # Layer 0: Parsing (no deps)
+  - id: parse_stl_ascii
+    path: units/parse_stl_ascii
+    deps: []
+  - id: parse_gcode
+    path: units/parse_gcode
+    deps: []
+
+  # Layer 1: BBox (depends on vec3)
+  - id: bbox_from_points
+    path: units/bbox_from_points
+    deps: [vec3_add]
+  - id: bbox_contains
+    path: units/bbox_contains
+    deps: [vec3_add]
+
+  # Layer 2: STL processing (depends on parse_stl_ascii)
+  - id: stl_fix_normals
+    path: units/stl_fix_normals
+    deps: [parse_stl_ascii]
+  - id: stl_bounds
+    path: units/stl_bounds
+    deps: [vec3_add]
+
+  # Layer 3: SDF (depends on vec3 + bbox)
+  - id: sdf_grid_create
+    path: units/sdf_grid_create
+    deps: [bbox_from_points]
+  - id: sdf_query
+    path: units/sdf_query
+    deps: [vec3_length]
+
+  # Layer 4: Simulation (depends on sdf)
+  - id: stock_heightmap
+    path: units/stock_heightmap
+    deps: [sdf_grid_create]
+  - id: simulate_removal
+    path: units/simulate_removal
+    deps: [stock_heightmap, vec3_length]
+
+  # Layer 5: CAM strategies (depends on vec3 + bbox)
+  - id: face_milling_paths
+    path: units/face_milling_paths
+    deps: [bbox_from_points, vec3_add]
+  - id: adaptive_clearing_paths
+    path: units/adaptive_clearing_paths
+    deps: [bbox_from_points, vec3_add, vec3_length]
+  - id: pocketing_paths
+    path: units/pocketing_paths
+    deps: [bbox_from_points, vec3_add]
+
+  # Layer 6: Post-processing (depends on vec3)
+  - id: toolpath_to_segments
+    path: units/toolpath_to_segments
+    deps: [vec3_length]
+  - id: render_fanuc
+    path: units/render_fanuc
+    deps: [toolpath_to_segments]
+  - id: render_heidenhain
+    path: units/render_heidenhain
+    deps: [toolpath_to_segments]

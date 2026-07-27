@@ -1,0 +1,7 @@
+function_name: "vec3_dot"
+signature: >
+  def vec3_dot(a: tuple[float, float, float], b: tuple[float, float, float]) -> float
+description: "Compute dot product of two 3D vectors"
+notes: >
+  (1, 0, 0) • (0, 1, 0) -> 0
+  (2, 3, 4) • (5, 6, 7) -> 32

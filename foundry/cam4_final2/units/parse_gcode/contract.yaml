@@ -1,0 +1,4 @@
+function_name: "parse_gcode"
+signature: "def parse_gcode(text: str) -> list[dict]"
+description: "Parse G-code text into structured command list with coordinates and params."
+notes: "'G1 X10 Y20' -> [{'code': 'G', 'number': 1, 'X': 10.0, 'Y': 20.0}]"

@@ -1,0 +1,6 @@
+function_name: "parse_gcode"
+signature: "def parse_gcode(text) -> list[dict]"
+description: "Parse G-code text into structured command list"
+notes: >
+  ("G0 X10 Y20\nG1 X30 Y40 F100") -> [{"type": "rapid", "x": 10.0, "y": 20.0}, {"type": "linear", "x": 30.0, "y": 40.0, "feed": 100.0}]
+  ("G0 Z5\nM2") -> [{"type": "rapid", "z": 5.0}, {"type": "end"}]

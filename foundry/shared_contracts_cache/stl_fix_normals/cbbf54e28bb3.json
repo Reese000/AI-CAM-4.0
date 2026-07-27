@@ -1,0 +1,13 @@
+{
+  "deps": [
+    "vec3_cross",
+    "vec3_normalize"
+  ],
+  "description": "Recalculate and fix STL face normals to ensure consistent outward orientation",
+  "examples": [
+    "vertices=[(0,0,0),(1,0,0),(0,1,0)], faces=[(0,1,2)] -> [(0.0, 0.0, 1.0)]",
+    "vertices=[(0,0,0),(1,0,0),(0,1,0),(0,0,1)], faces=[(0,1,2), (0,1,3)] -> [(0.0, 0.0, 1.0), (0.0, -0.5773502691896257, 0.816496580927726)]"
+  ],
+  "id": "stl_fix_normals",
+  "signature": "def stl_fix_normals(vertices, faces) -> list[tuple[float, float, float]]"
+}

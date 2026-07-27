@@ -1,0 +1,7 @@
+function_name: "simulate_toolpath"
+signature: >
+  def simulate_toolpath(stock: tuple[list[list[float]], dict], toolpath: list[tuple[float, float, float]]) -> list[list[list[float]]]
+description: "Simulate material removal using heightmap and toolpath, returning frame sequence"
+notes: >
+  stock = ([[5.0, 5.0], [5.0, 5.0]], {'origin': (0,0), 'dx': 1, 'dy': 1}), toolpath = [(0.5, 0.5, 0.0)] -> [[[0.0, 5.0], [5.0, 5.0]]]
+  stock = ([[5.0, 5.0], [5.0, 5.0]], {'origin': (0,0), 'dx': 1, 'dy': 1}), toolpath = [(0.5, 0.5, 2.0), (1.5, 1.5, 2.0)] -> [[[5.0, 5.0], [5.0, 5.0]], [[2.0, 5.0], [5.0, 2.0]]]

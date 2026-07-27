@@ -1,0 +1,5 @@
+function_name: "adaptive_clearing_paths"
+signature: >
+  def adaptive_clearing_paths(stock: Tuple[np.ndarray, np.ndarray], tool: Dict) -> List[Tuple[np.ndarray, np.ndarray]]
+description: "Generate adaptive clearing toolpath for roughing."
+notes: "stock=([0,0,0],[10,10,5]), tool={'diameter': 2.0} -> toolpath_segments"

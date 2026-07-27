@@ -1,0 +1,6 @@
+function_name: "toolpath_to_ir"
+signature: "def toolpath_to_ir(toolpath: list[dict[str, any]]) -> list[dict[str, any]]"
+description: "Convert toolpath to intermediate representation for post-processors"
+notes: >
+  [{'type': 'line', 'start': (0,0,0), 'end': (10,0,0)}] -> [{'type': 'line', 'start': (0,0,0), 'end': (10,0,0), 'feed': 100}]
+  [{'type': 'arc', 'start': (0,0,0), 'end': (10,10,0), 'center': (0,10,0), 'radius': 10, 'direction': 'cw'}] -> [{'type': 'arc', 'start': (0,0,0), 'end': (10,10,0), 'center': (0,10,0), 'radius': 10, 'direction': 'cw', 'feed': 100}]

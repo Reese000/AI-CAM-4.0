@@ -1,0 +1,7 @@
+function_name: "stock_heightmap"
+signature: >
+  def stock_heightmap(stock_dims: tuple[float, float, float], resolution: float) -> tuple[list[list[float]], float]
+description: "Create Z-height grid representing material stock"
+notes: >
+  ((100,100,10), 1.0) -> (101x101 grid of 10.0, 1.0)
+  ((50,50,5), 2.0) -> (26x26 grid of 5.0, 2.0)

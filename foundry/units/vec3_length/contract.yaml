@@ -1,0 +1,8 @@
+function_name: vec3_length
+signature: "def vec3_length(v: tuple[float, float, float]) -> float"
+description: >
+  Compute the length (magnitude) of a 3D vector.
+notes: >
+  (3, 4, 0) -> 5.0
+  (1, 0, 0) -> 1.0
+  (0, 0, 0) -> 0.0

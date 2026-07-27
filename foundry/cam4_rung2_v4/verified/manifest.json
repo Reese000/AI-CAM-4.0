@@ -1,0 +1,23 @@
+{
+  "superseded": [],
+  "verified": {
+    "parse_gcode": {
+      "content_sha256": "5e7fef770d7ac82ee92712659f1f3b82907ecaf5fa6950dae4e9b5ee66c1ae72",
+      "oracle_sha256": "b094ed654253e02eb64f9ab78e7640c1cb6dba0e3a67097e58dab52adb596c9c",
+      "session_id": "016e9be7-6627-4d88-b5e9-5d118d74885d",
+      "verified_at": "2026-07-16T18:53:22+00:00"
+    },
+    "vec3_length": {
+      "content_sha256": "7cead96f5de4621e8976ccbb29299d18863357fee13ceaea5253427decc39332",
+      "oracle_sha256": "876ed1f9a2a00a1d986b0099035e2412fb88710dea5e43762058aecb34ab6d8c",
+      "session_id": "016e9be7-6627-4d88-b5e9-5d118d74885d",
+      "verified_at": "2026-07-16T18:53:07+00:00"
+    },
+    "vec3_normalize": {
+      "content_sha256": "7165aac4ad5779220626e712e5517a5706466dc846b1d2dd21d7d02498af3a7d",
+      "oracle_sha256": "5ec4139e67ab96bfc65ad3dcf0239bc7d42d534c0d821a3dcb72b530a885839e",
+      "session_id": "016e9be7-6627-4d88-b5e9-5d118d74885d",
+      "verified_at": "2026-07-16T18:53:10+00:00"
+    }
+  }
+}

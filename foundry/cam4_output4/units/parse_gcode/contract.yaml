@@ -1,0 +1,4 @@
+function_name: "parse_gcode"
+signature: "def parse_gcode(text: str) -> List[Dict]"
+description: "Parse G-code text into a list of commands with parameters."
+notes: "'G0 X1 Y2' -> [{'command': 'G0', 'X': 1.0, 'Y': 2.0}]"

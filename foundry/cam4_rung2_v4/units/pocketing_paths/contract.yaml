@@ -1,0 +1,4 @@
+function_name: "pocketing_paths"
+signature: "def pocketing_paths(stock: dict, tool: dict) -> list"
+description: "Generate pocket clearing toolpath."
+notes: "stock, tool -> [{'type': 'offset', 'points': [...]}]"

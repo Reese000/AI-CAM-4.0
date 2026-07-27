@@ -1,0 +1,7 @@
+function_name: "simulate_toolpath"
+signature: >
+  def simulate_toolpath(stock: dict, toolpath: list[dict]) -> list[list[list[float]]]
+description: "Simulate material removal, return heightmap frames"
+notes: >
+  stock with heightmap, simple straight toolpath -> [initial, after cut1, after cut2, ...]
+  Empty toolpath -> [initial stock only]

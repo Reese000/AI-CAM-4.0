@@ -1,0 +1,12 @@
+{
+  "deps": [
+    "vec3_add"
+  ],
+  "description": "Compute axis-aligned bounding box from list of points",
+  "examples": [
+    "[(0,0,0), (1,2,3), (-1,-2,-3)] -> ((-1,-2,-3), (1,2,3))",
+    "[(5,5,5)] -> ((5,5,5), (5,5,5))"
+  ],
+  "id": "bbox_from_points",
+  "signature": "def bbox_from_points(points: list[tuple[float, float, float]]) -> tuple[tuple[float, float, float], tuple[float, float, float]]"
+}

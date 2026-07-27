@@ -1,0 +1,5 @@
+function_name: "stl_fix_normals"
+signature: >
+  def stl_fix_normals(vertices: np.ndarray, faces: List[Tuple[int,int,int]]) -> np.ndarray
+description: "Fix inverted normals in an STL model by ensuring they point outward."
+notes: "vertices=[[0,0,0],[1,0,0],[0,1,0]], faces=[(0,1,2)] -> normals=[[0,0,1]]"

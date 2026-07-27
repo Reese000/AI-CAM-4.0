@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "ai-cam"
+version = "4.0.0"
+description = "Minimal scope, maximum functionality CAD/CAM system"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "PySide6>=6.5",
+    "PyOpenGL>=3.1.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-timeout>=2.1",
+    "hypothesis>=6.0",
+]
+
+[project.scripts]
+ai-cam = "app.__main__:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+timeout = 30

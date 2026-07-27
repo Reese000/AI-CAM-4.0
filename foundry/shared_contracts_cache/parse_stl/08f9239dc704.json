@@ -1,0 +1,13 @@
+{
+  "deps": [
+    "vec3_add",
+    "vec3_length"
+  ],
+  "description": "Parse binary or ASCII STL file into vertices, normals, and face indices",
+  "examples": [
+    "'test_ascii.stl' with 2 triangles -> ((0.0,0.0,0.0), (1.0,0.0,0.0), (0.0,1.0,0.0), (0.0,0.0,1.0)), ((0.0,0.0,1.0), (0.0,0.0,1.0)), ((0,1,2), (0,1,3))",
+    "'test_binary.stl' with 1 triangle -> ((0.0,0.0,0.0), (1.0,0.0,0.0), (0.0,1.0,0.0)), ((0.0,0.0,1.0)), ((0,1,2))"
+  ],
+  "id": "parse_stl",
+  "signature": "def parse_stl(path: str) -> tuple[list[tuple[float, float, float]], list[tuple[float, float, float]], list[tuple[int, int, int]]]"
+}

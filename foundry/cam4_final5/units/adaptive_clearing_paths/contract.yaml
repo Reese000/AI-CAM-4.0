@@ -1,0 +1,7 @@
+function_name: "adaptive_clearing_paths"
+signature: >
+  def adaptive_clearing_paths(stock_dims: tuple[float, float, float], tool_diameter: float) -> list[tuple[float, float, float]]
+description: "Generate adaptive clearing toolpath with constant tool engagement"
+notes: >
+  (100.0, 100.0, 10.0), 10.0 -> [(10.0, 10.0, -2.0), (50.0, 10.0, -2.0), (90.0, 10.0, -2.0), (90.0, 50.0, -2.0)]
+  (50.0, 50.0, 5.0), 5.0 -> [(5.0, 5.0, -1.0), (25.0, 5.0, -1.0), (45.0, 5.0, -1.0)]

@@ -1,0 +1,4 @@
+function_name: "face_milling_paths"
+signature: "def face_milling_paths(stock: dict, tool: dict) -> list[dict]"
+description: "Generate face milling toolpath for stock surface"
+notes: "stock={'dims':[100,100,10]}, tool={'diameter':10} -> [{'type':'line',...}]"

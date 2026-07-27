@@ -1,0 +1,4 @@
+function_name: "parse_gcode"
+signature: "def parse_gcode(text: str) -> list"
+description: "Parse G-code text into a list of commands."
+notes: "'G0 X10 Y20 Z5' -> [{'type': 'G0', 'X': 10, 'Y': 20, 'Z': 5}]"

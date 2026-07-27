@@ -1,0 +1,4 @@
+function_name: "render_heidenhain"
+signature: "def render_heidenhain(ir_segments: list[dict]) -> str"
+description: "Render Heidenhain-compatible G-code from intermediate representation."
+notes: "IR segments -> G-code string"

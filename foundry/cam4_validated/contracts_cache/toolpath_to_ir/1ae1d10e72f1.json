@@ -1,0 +1,11 @@
+{
+  "deps": [
+    "vec3_length"
+  ],
+  "description": "Convert a toolpath into an intermediate representation for post-processing.",
+  "examples": [
+    "list of points -> list of IR segments with move types and parameters"
+  ],
+  "id": "toolpath_to_ir",
+  "signature": "def toolpath_to_ir(toolpath: list[list[float]]) -> list[dict]"
+}

@@ -1,0 +1,5 @@
+function_name: "simulate_toolpath"
+signature: >
+  def simulate_toolpath(stock: list[list[float]], toolpath: list[tuple[float,float,float]]) -> list[list[list[float]]]
+description: "Simulates material removal, returns frames of heightmap snapshots."
+notes: "heightmap, [(0.0,0.0,5.0), ...] -> [heightmap_after_frame1, ...]"

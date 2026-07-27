@@ -1,0 +1,5 @@
+function_name: "stock_heightmap"
+signature: >
+  def stock_heightmap(stock_dims: tuple[float, float, float], resolution: int) -> dict
+description: "Initialize Z-map heightfield stock model with given dimensions and resolution."
+notes: "(100.0, 100.0, 25.0), 200 -> stock dict with height array"

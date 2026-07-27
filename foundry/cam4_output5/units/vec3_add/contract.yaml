@@ -1,0 +1,4 @@
+function_name: "vec3_add"
+signature: "def vec3_add(a, b) -> tuple[float, float, float]"
+description: "Add two 3D vectors component-wise"
+notes: "(1, 2, 3), (4, 5, 6) -> (5, 7, 9)"

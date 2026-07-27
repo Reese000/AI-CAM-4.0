@@ -1,0 +1,6 @@
+function_name: "simulate_toolpath"
+signature: >
+  def simulate_toolpath(stock: dict, toolpath: list[list[list[float]]]) -> list[dict]
+description: "Simulate material removal along toolpath, returning heightmap frames."
+notes: >
+  stock={heightmap}, toolpath=[[...]] -> list of frame dicts with modified heightmaps

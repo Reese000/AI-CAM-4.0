@@ -1,0 +1,9 @@
+{
+  "deps": [],
+  "description": "Parse G-code text into a list of commands with parameters.",
+  "examples": [
+    "'G0 X10 Y10' -> [{'command': 'G0', 'X': 10, 'Y': 10}]"
+  ],
+  "id": "parse_gcode",
+  "signature": "def parse_gcode(text: str) -> list[dict]"
+}

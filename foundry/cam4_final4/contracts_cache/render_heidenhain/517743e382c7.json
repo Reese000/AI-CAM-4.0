@@ -1,0 +1,12 @@
+{
+  "deps": [
+    "vec3_length"
+  ],
+  "description": "Render IR segments to Heidenhain G-code string",
+  "examples": [
+    "[{'type':'move','start':(0,0,0),'end':(10,0,0)}] -> '0 BEGIN PGM\\n1 L X+0 Y+0 Z+0 R0 FMAX'",
+    "[] -> '0 BEGIN PGM\\n0 END PGM'"
+  ],
+  "id": "render_heidenhain",
+  "signature": "def render_heidenhain(ir_segments: list[dict]) -> str"
+}

@@ -1,0 +1,19 @@
+units:
+  - id: vec3_add
+    path: units/vec3_add
+    deps: []
+  - id: vec3_sub
+    path: units/vec3_sub
+    deps: []
+  - id: vec3_dot
+    path: units/vec3_dot
+    deps: []
+  - id: vec3_cross
+    path: units/vec3_cross
+    deps: []
+  - id: vec3_length
+    path: units/vec3_length
+    deps: []
+  - id: vec3_normalize
+    path: units/vec3_normalize
+    deps: []

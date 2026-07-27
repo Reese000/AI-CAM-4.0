@@ -1,0 +1,10 @@
+function_name: vec3_sum_components
+signature: 'def vec3_sum_components(v: tuple[float, float, float]) -> float'
+description: Sum the three components of a 3D vector and return the total.
+notes: '(1, 2, 3) -> 6.0
+
+  (0, 0, 0) -> 0.0
+
+  (1.5, 2.5, 3.5) -> 7.5
+
+  (-1, 2, -3) -> -2.0'

@@ -1,0 +1,6 @@
+function_name: "gcode_to_segments"
+signature: >
+  def gcode_to_segments(commands) -> list[tuple[tuple[float,float,float], tuple[float,float,float]]]
+description: "Converts G-code commands to toolpath line segments."
+notes: >
+  [{'G':0, 'X':10.0, 'Y':0.0, 'Z':0.0}, {'G':1, 'X':20.0, 'Y':0.0, 'Z':0.0}] -> [((0.0,0.0,0.0), (10.0,0.0,0.0)), ((10.0,0.0,0.0), (20.0,0.0,0.0))]

@@ -1,0 +1,7 @@
+function_name: "pocketing_paths"
+signature: >
+  def pocketing_paths(stock: tuple[tuple[float, float, float], tuple[float, float, float]], tool: float) -> list[tuple[float, float, float]]
+description: "Generate concentric spiral pocket clearing toolpath"
+notes: >
+  stock = ((0,0,0), (10,10,5)), tool = 2.0 -> [(5,5,5), (4.5,5,5), (4,5,5), ...]
+  stock = ((-5,-5,0), (5,5,2)), tool = 1.0 -> [(0,0,2), (-0.5,0,2), (-1,0,2), ...]

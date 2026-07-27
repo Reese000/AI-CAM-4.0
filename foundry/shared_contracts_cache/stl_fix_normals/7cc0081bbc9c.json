@@ -1,0 +1,13 @@
+{
+  "deps": [
+    "vec3_cross",
+    "vec3_normalize"
+  ],
+  "description": "Compute and normalize correct normals for STL faces",
+  "examples": [
+    "vertices=[(0,0,0),(1,0,0),(0,1,0)], faces=[(0,1,2)] -> [(0,0,1)]",
+    "vertices=[(0,0,0),(1,0,0),(0,1,0),(0,0,1)], faces=[(0,1,2),(0,2,3)] -> [(0,0,1),(0,0,1)]"
+  ],
+  "id": "stl_fix_normals",
+  "signature": "def stl_fix_normals(vertices: list[tuple[float, float, float]], faces: list[tuple[int, int, int]]) -> list[tuple[float, float, float]]"
+}

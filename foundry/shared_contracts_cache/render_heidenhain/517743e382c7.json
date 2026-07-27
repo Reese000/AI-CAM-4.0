@@ -1,0 +1,13 @@
+{
+  "deps": [
+    "toolpath_to_ir",
+    "vec3_length"
+  ],
+  "description": "Generate Heidenhain-compatible G-code from intermediate representation",
+  "examples": [
+    "[{'type': 'rapid', 'start': (0.0, 0.0, 5.0), 'end': (0.0, 0.0, 5.0)}, {'type': 'feed', 'start': (0.0, 0.0, 5.0), 'end': (10.0, 0.0, 5.0)}] -> '0 R0 X0 Y0 Z5\\n1 L X0 Y0 Z5 FMAX\\n2 L X10 Y0 Z5 F100'",
+    "[{'type': 'feed', 'start': (0.0, 0.0, 0.0), 'end': (5.0, 5.0, 0.0)}] -> '0 R0 X0 Y0 Z0\\n1 L X5 Y5 Z0 F100'"
+  ],
+  "id": "render_heidenhain",
+  "signature": "def render_heidenhain(ir_segments: list[dict]) -> str"
+}

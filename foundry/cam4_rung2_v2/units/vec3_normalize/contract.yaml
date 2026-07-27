@@ -1,0 +1,4 @@
+function_name: "vec3_normalize"
+signature: "def vec3_normalize(v) -> tuple"
+description: "Normalize a 3D vector to unit length."
+notes: "(3,4,0) -> (0.6, 0.8, 0.0)"

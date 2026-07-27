@@ -1,0 +1,5 @@
+function_name: "adaptive_clearing_paths"
+signature: >
+  def adaptive_clearing_paths(stock: dict, tool: dict) -> list[tuple[float,float,float]]
+description: "Generates adaptive clearing toolpath."
+notes: "{'dims': (10.0,10.0,5.0)}, {'diameter': 2.0} -> [(0.0,0.0,5.0), ...]"

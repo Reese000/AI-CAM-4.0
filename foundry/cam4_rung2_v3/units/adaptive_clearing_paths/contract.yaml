@@ -1,0 +1,6 @@
+function_name: "adaptive_clearing_paths"
+signature: "def adaptive_clearing_paths(stock: dict, tool: dict) -> list[dict]"
+description: "Generate adaptive clearing toolpath for roughing"
+notes: >
+  stock with pocket, tool={'diameter': 8} -> toolpath following contour
+  stock with holes, tool={'diameter': 5} -> spiral-inward pattern

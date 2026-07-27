@@ -1,0 +1,10 @@
+{
+  "deps": [],
+  "description": "Convert toolpath to intermediate representation with move types",
+  "examples": [
+    "[(0,0,10), (10,10,0)] -> [{'start':(0,0,10), 'end':(10,10,0), 'type':'linear'}]",
+    "[(0,0,10), (10,10,0), (10,10,5)] -> [{'start':(0,0,10), 'end':(10,10,0), 'type':'linear'}, {'start':(10,10,0), 'end':(10,10,5), 'type':'rapid'}]"
+  ],
+  "id": "toolpath_to_ir",
+  "signature": "def toolpath_to_ir(toolpath: list[tuple[float, float, float]]) -> list[dict]"
+}

@@ -1,0 +1,14 @@
+{
+  "deps": [
+    "bbox_from_points",
+    "vec3_add",
+    "vec3_length"
+  ],
+  "description": "Generate concentric spiral pocket clearing toolpath",
+  "examples": [
+    "stock = ((0,0,0), (10,10,5)), tool = 2.0 -> [(5,5,5), (4.5,5,5), (4,5,5), ...]",
+    "stock = ((-5,-5,0), (5,5,2)), tool = 1.0 -> [(0,0,2), (-0.5,0,2), (-1,0,2), ...]"
+  ],
+  "id": "pocketing_paths",
+  "signature": "def pocketing_paths(stock: tuple[tuple[float, float, float], tuple[float, float, float]], tool: float) -> list[tuple[float, float, float]]"
+}

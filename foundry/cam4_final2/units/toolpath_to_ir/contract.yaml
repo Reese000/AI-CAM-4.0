@@ -1,0 +1,5 @@
+function_name: "toolpath_to_ir"
+signature: >
+  def toolpath_to_ir(toolpath: list[list[list[float]]], settings: dict) -> list[dict]
+description: "Convert toolpath to intermediate representation (IR) with moves and settings."
+notes: "[[...]], {feed, spindle} -> IR with move commands and headers/footers"

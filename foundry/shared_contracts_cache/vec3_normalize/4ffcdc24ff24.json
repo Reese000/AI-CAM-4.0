@@ -1,0 +1,12 @@
+{
+  "deps": [
+    "vec3_length"
+  ],
+  "description": "Return unit vector in same direction as input",
+  "examples": [
+    "(3, 0, 0) -> (1.0, 0.0, 0.0)",
+    "(2, 3, 4) -> (0.3713906763541037, 0.5570860145311556, 0.7427813527082074)"
+  ],
+  "id": "vec3_normalize",
+  "signature": "def vec3_normalize(v: tuple[float, float, float]) -> tuple[float, float, float]"
+}

@@ -1,0 +1,10 @@
+units:
+  - id: rot13_cipher
+    path: units/rot13_cipher
+    deps: []
+  - id: word_count
+    path: units/word_count
+    deps: []
+  - id: snake_to_camel
+    path: units/snake_to_camel
+    deps: []

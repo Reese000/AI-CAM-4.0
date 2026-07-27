@@ -1,0 +1,9 @@
+function_name: "snake_to_camel"
+signature: "def snake_to_camel(text: str) -> str"
+description: >
+  Converts snake_case string to camelCase, removing underscores and capitalizing following letters
+notes: >
+  'snake_case' -> 'snakeCase'
+  'already_camel' -> 'alreadyCamel'
+  'single' -> 'single'
+  'multiple_underscores_here' -> 'multipleUnderscoresHere'

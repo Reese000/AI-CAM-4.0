@@ -1,0 +1,5 @@
+function_name: "face_milling_paths"
+signature: >
+  def face_milling_paths(stock: Dict[str, Any], tool: Dict[str, Any]) -> List[Tuple[float, float, float]]
+description: "Generate face milling toolpath for given stock and tool"
+notes: "(stock_dict, tool_dict) -> [(0.0, 0.0, 0.0), (10.0, 0.0, 0.0), ...]"

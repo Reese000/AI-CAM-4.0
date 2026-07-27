@@ -1,0 +1,5 @@
+function_name: "render_heidenhain"
+signature: "def render_heidenhain(ir_segments: list[dict]) -> str"
+description: "Generate Heidenhain G-code from intermediate representation"
+notes: >
+  [{'type': 'move', 'start': (0.0,0.0,0.0), 'end': (10.0,10.0,0.0)}] -> 'G0 X0 Y0 Z0\nG1 X10 Y10 Z0'

@@ -1,0 +1,4 @@
+function_name: "parse_gcode"
+signature: "def parse_gcode(text: str) -> List[Tuple[str, Dict[str, float]]]"
+description: "Parse G-code text into structured command list"
+notes: "('G0 X0 Y0') -> [('G0', {'X': 0.0, 'Y': 0.0})]"

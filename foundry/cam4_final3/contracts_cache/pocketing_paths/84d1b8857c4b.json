@@ -1,0 +1,14 @@
+{
+  "deps": [
+    "bbox_from_points",
+    "vec3_add",
+    "vec3_length"
+  ],
+  "description": "Generate pocket clearing toolpath",
+  "examples": [
+    "({'dims': (10,10,5), 'resolution': 0.5}, {'diameter': 5, 'length': 20}) -> [{'type': 'line', 'start': (2.5,2.5,-1), 'end': (7.5,2.5,-1)}, {'type': 'line', 'start': (7.5,7.5,-1), 'end': (2.5,7.5,-1)}]",
+    "({'dims': (5,5,5), 'resolution': 0.5}, {'diameter': 2, 'length': 10}) -> [{'type': 'line', 'start': (1,1,-1), 'end': (4,1,-1)}, {'type': 'line', 'start': (4,4,-1), 'end': (1,4,-1)}]"
+  ],
+  "id": "pocketing_paths",
+  "signature": "def pocketing_paths(stock: dict, tool: dict) -> list[dict[str, any]]"
+}

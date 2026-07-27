@@ -1,0 +1,10 @@
+{
+  "deps": [],
+  "description": "Parse G-code text into structured command list with coordinate values",
+  "examples": [
+    "'G0 X0.0 Y0.0 Z0.0\\nG1 X10.0 Y10.0 Z-2.0 F100.0' -> [{'cmd': 'G0', 'X': 0.0, 'Y': 0.0, 'Z': 0.0}, {'cmd': 'G1', 'X': 10.0, 'Y': 10.0, 'Z': -2.0, 'F': 100.0}]",
+    "'G0 X0 Y0\\nG0 Z5' -> [{'cmd': 'G0', 'X': 0.0, 'Y': 0.0}, {'cmd': 'G0', 'Z': 5.0}]"
+  ],
+  "id": "parse_gcode",
+  "signature": "def parse_gcode(text: str) -> list[dict]"
+}

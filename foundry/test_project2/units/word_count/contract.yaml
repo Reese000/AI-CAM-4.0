@@ -1,0 +1,8 @@
+function_name: "word_count"
+signature: "def word_count(text: str) -> int"
+description: "Counts the number of words in a string (words separated by whitespace)"
+notes: >
+  'hello world' -> 2
+  '  spaces  around  ' -> 3
+  '' -> 0
+  'one' -> 1

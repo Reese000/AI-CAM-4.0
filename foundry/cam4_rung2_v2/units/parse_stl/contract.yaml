@@ -1,0 +1,4 @@
+function_name: "parse_stl"
+signature: "def parse_stl(path) -> tuple"
+description: "Parse an STL file (binary or ASCII) and return vertices, normals, and faces."
+notes: "path to a simple cube STL -> (vertices, normals, faces)"

@@ -1,0 +1,81 @@
+[
+  {
+    "kind": "decompose_outcome",
+    "unit_id": "vec3_sub",
+    "stage": "authoring_failed",
+    "detail": "decomposition must have 2-3 sub-units, got 1",
+    "measured": {
+      "unit_id": "vec3_sub",
+      "model": "yi-coder-9b-chat-Q5_K_M.gguf",
+      "n": 20,
+      "passes": 0,
+      "rate": 0.0,
+      "wilson_95_lo": 0.0,
+      "wilson_95_hi": 0.1611,
+      "generation_errors": 0,
+      "failed_stage_histogram": {
+        "test": 20
+      },
+      "failed_test_histogram": {
+        "test_1": 20
+      }
+    },
+    "timestamp": "2026-07-15T21:32:31+00:00"
+  },
+  {
+    "kind": "decompose_outcome",
+    "unit_id": "vec3_dot",
+    "stage": "parent_failed",
+    "sub_unit_ids": [
+      "vec3_component_multiply",
+      "vec3_sum_components"
+    ],
+    "passed": false,
+    "measured": {
+      "unit_id": "vec3_dot",
+      "model": "yi-coder-9b-chat-Q5_K_M.gguf",
+      "n": 20,
+      "passes": 0,
+      "rate": 0.0,
+      "wilson_95_lo": 0.0,
+      "wilson_95_hi": 0.1611,
+      "generation_errors": 0,
+      "failed_stage_histogram": {
+        "test": 20
+      },
+      "failed_test_histogram": {
+        "test_1": 20
+      }
+    },
+    "parent_attempts_used": 15,
+    "timestamp": "2026-07-15T21:34:09+00:00"
+  },
+  {
+    "kind": "decompose_outcome",
+    "unit_id": "vec3_cross",
+    "stage": "sub_unit_failed",
+    "sub_unit_ids": [
+      "compute_cross_components",
+      "validate_vec3"
+    ],
+    "failed_sub_unit": "validate_vec3",
+    "measured": {
+      "unit_id": "vec3_cross",
+      "model": "yi-coder-9b-chat-Q5_K_M.gguf",
+      "n": 20,
+      "passes": 0,
+      "rate": 0.0,
+      "wilson_95_lo": 0.0,
+      "wilson_95_hi": 0.1611,
+      "generation_errors": 0,
+      "failed_stage_histogram": {
+        "test": 16,
+        "syntax": 4
+      },
+      "failed_test_histogram": {
+        "test_1": 16
+      }
+    },
+    "timestamp": "2026-07-15T21:36:10+00:00"
+  }
+]

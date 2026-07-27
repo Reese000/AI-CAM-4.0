@@ -1,0 +1,7 @@
+function_name: "face_milling_paths"
+signature: >
+  def face_milling_paths(stock: tuple[tuple[float,float,float], tuple[float,float,float]], tool: dict) -> list[tuple[tuple[float,float,float], tuple[float,float,float]]]
+description: "Generate zigzag face milling toolpath over stock"
+notes: >
+  ((0,0,0), (10,10,2)), {'diameter': 2.0} -> [((0,0,1), (10,0,1)), ((10,2,1), (0,2,1)), ...]
+  ((0,0,0), (5,5,1)), {'diameter': 1.0} -> [((0,0,0.5), (5,0,0.5)), ((5,1,0.5), (0,1,0.5)), ...]

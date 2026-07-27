@@ -1,0 +1,4 @@
+function_name: "adaptive_clearing_paths"
+signature: "def adaptive_clearing_paths(stock: dict, tool: dict) -> list[list[float]]"
+description: "Generate adaptive clearing toolpath for efficient material removal."
+notes: "stock and tool parameters -> list of toolpath points"

@@ -1,0 +1,5 @@
+function_name: "adaptive_clearing_paths"
+signature: >
+  def adaptive_clearing_paths(stock: Dict[str, Any], tool: Dict[str, Any]) -> List[Tuple[float, float, float]]
+description: "Generate adaptive clearing toolpath for given stock and tool"
+notes: "(stock_dict, tool_dict) -> [(0.0, 0.0, 0.0), (5.0, 0.0, 0.0), ...]"

@@ -1,0 +1,7 @@
+function_name: "gcode_to_segments"
+signature: >
+  def gcode_to_segments(commands: list[dict]) -> list[tuple[tuple[float, float, float], tuple[float, float, float], str]]
+description: "Convert parsed G-code commands into line segments with rapid/feed moves"
+notes: >
+  [{'cmd': 'G0', 'X': 0.0, 'Y': 0.0, 'Z': 0.0}, {'cmd': 'G1', 'X': 10.0, 'Y': 0.0, 'Z': 0.0}] -> [((0.0,0.0,0.0), (0.0,0.0,0.0), 'rapid'), ((0.0,0.0,0.0), (10.0,0.0,0.0), 'feed')]
+  [{'cmd': 'G0', 'X': 0, 'Y': 0, 'Z': 5}, {'cmd': 'G1', 'X': 10, 'Y': 10, 'Z': 0}] -> [((0.0,0.0,5.0), (0.0,0.0,5.0), 'rapid'), ((0.0,0.0,5.0), (10.0,10.0,0.0), 'feed')]

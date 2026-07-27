@@ -1,0 +1,5 @@
+function_name: "bbox_contains"
+signature: >
+  def bbox_contains(bbox: Tuple[np.ndarray, np.ndarray], point: np.ndarray) -> bool
+description: "Test if a point is inside or on the boundary of a bounding box."
+notes: "bbox=([0,0,0], [1,1,1]), point=[0.5,0.5,0.5] -> True"

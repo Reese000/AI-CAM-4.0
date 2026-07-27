@@ -1,0 +1,7 @@
+function_name: "stock_heightmap"
+signature: >
+  def stock_heightmap(stock_dims: tuple[float, float, float], resolution: float) -> list[list[float]]
+description: "Create Z-map heightfield stock model"
+notes: >
+  ((10.0, 10.0, 5.0), 1.0) -> [[5.0]*10 for _ in range(10)]
+  ((5.0, 5.0, 5.0), 0.5) -> [[5.0]*10 for _ in range(10)]

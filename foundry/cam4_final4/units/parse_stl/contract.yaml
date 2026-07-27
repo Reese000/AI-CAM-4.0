@@ -1,0 +1,7 @@
+function_name: "parse_stl"
+signature: >
+  def parse_stl(path: str) -> tuple[list[tuple[float, float, float]], list[tuple[float, float, float]], list[tuple[int, int, int]]]
+description: "Parse STL file and return vertices, normals, faces"
+notes: >
+  mock_file('triangle.stl') with 1 triangle -> ([vertices], [normals], [faces])
+  mock_file('empty.stl') -> ([], [], [])

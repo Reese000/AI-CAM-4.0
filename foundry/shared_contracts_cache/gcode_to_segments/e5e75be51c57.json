@@ -1,0 +1,10 @@
+{
+  "deps": [],
+  "description": "Convert parsed G-code commands to toolpath segments with coordinates",
+  "examples": [
+    "[{'code':0,'params':{'X':0,'Y':0,'Z':10}}, {'code':1,'params':{'X':10,'Y':10,'Z':0}}] -> [{'start':(0,0,10),'end':(10,10,0),'type':'linear'}]",
+    "[{'code':0,'params':{'X':0,'Y':0,'Z':5}}, {'code':0,'params':{'Z':10}}] -> [{'start':(0,0,5),'end':(0,0,10),'type':'rapid'}]"
+  ],
+  "id": "gcode_to_segments",
+  "signature": "def gcode_to_segments(commands: list[dict[str, float]]) -> list[dict]"
+}

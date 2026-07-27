@@ -1,0 +1,6 @@
+function_name: "stl_fix_normals"
+signature: "def stl_fix_normals(vertices, faces) -> list[tuple[float, float, float]]"
+description: "Recompute face normals from vertices to fix inverted orientations"
+notes: >
+  (mock_inverted_normals) -> [[0.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0]]
+  (mock_correct_normals) -> [[0.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0]]

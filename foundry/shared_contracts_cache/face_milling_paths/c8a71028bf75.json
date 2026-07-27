@@ -1,0 +1,14 @@
+{
+  "deps": [
+    "bbox_from_points",
+    "vec3_add",
+    "vec3_length"
+  ],
+  "description": "Generate zigzag face milling toolpath for stock top surface",
+  "examples": [
+    "stock = ((0,0,0), (10,10,5)), tool = 2.0 -> [(1,1,5), (9,1,5), (9,3,5), (1,3,5), (1,5,5), ...]",
+    "stock = ((-5,-5,0), (5,5,2)), tool = 1.0 -> [(-4,-4,2), (4,-4,2), (4,-3,2), ...]"
+  ],
+  "id": "face_milling_paths",
+  "signature": "def face_milling_paths(stock: tuple[tuple[float, float, float], tuple[float, float, float]], tool: float) -> list[tuple[float, float, float]]"
+}

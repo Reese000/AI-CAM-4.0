@@ -1,0 +1,12 @@
+{
+  "deps": [
+    "vec3_add"
+  ],
+  "description": "Test if point is inside bounding box",
+  "examples": [
+    "(((0.0, 0.0, 0.0), (1.0, 1.0, 1.0)), (0.5, 0.5, 0.5)) -> True",
+    "(((0.0, 0.0, 0.0), (1.0, 1.0, 1.0)), (2.0, 0.0, 0.0)) -> False"
+  ],
+  "id": "bbox_contains",
+  "signature": "def bbox_contains(bbox: tuple[tuple[float, float, float], tuple[float, float, float]], point: tuple[float, float, float]) -> bool"
+}

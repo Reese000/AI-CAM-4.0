@@ -1,0 +1,12 @@
+{
+  "deps": [
+    "toolpath_to_ir",
+    "vec3_length"
+  ],
+  "description": "Render Fanuc-compatible G-code from intermediate representation.",
+  "examples": [
+    "IR segments -> G-code string"
+  ],
+  "id": "render_fanuc",
+  "signature": "def render_fanuc(ir_segments: list[dict]) -> str"
+}

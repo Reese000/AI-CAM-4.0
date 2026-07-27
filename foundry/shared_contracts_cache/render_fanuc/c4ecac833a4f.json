@@ -1,0 +1,13 @@
+{
+  "deps": [
+    "toolpath_to_ir",
+    "vec3_length"
+  ],
+  "description": "Generate Fanuc-compatible G-code from intermediate representation",
+  "examples": [
+    "[{'type': 'rapid', 'start': (0.0, 0.0, 5.0), 'end': (0.0, 0.0, 5.0)}, {'type': 'feed', 'start': (0.0, 0.0, 5.0), 'end': (10.0, 0.0, 5.0)}] -> 'G00 Z5.000\\nG00 X0.000 Y0.000\\nG01 X10.000 Y0.000 F100.0'",
+    "[{'type': 'feed', 'start': (0.0, 0.0, 0.0), 'end': (5.0, 5.0, 0.0)}] -> 'G01 X5.000 Y5.000 Z0.000 F100.0'"
+  ],
+  "id": "render_fanuc",
+  "signature": "def render_fanuc(ir_segments: list[dict]) -> str"
+}

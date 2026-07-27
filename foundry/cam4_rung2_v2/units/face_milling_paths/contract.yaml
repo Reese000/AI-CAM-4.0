@@ -1,0 +1,4 @@
+function_name: "face_milling_paths"
+signature: "def face_milling_paths(stock, tool) -> list"
+description: "Generate face milling toolpath for a given stock and tool."
+notes: "stock (bounding box of a cube), tool (10mm endmill) -> list of toolpath segments"

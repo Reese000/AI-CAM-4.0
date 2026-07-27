@@ -1,0 +1,5 @@
+function_name: "simulate_toolpath"
+signature: "def simulate_toolpath(stock, toolpath) -> list[list[list[float]]]"
+description: "Simulate material removal using SDF collision detection, returns frame sequence"
+notes: >
+  [[10.0, 10.0], [10.0, 10.0]], [{'type': 'line', 'start': (0,0,5), 'end': (100,0,5)}] -> [[[10.0, 10.0], [10.0, 10.0]], [[9.5, 10.0], [9.5, 10.0]]]

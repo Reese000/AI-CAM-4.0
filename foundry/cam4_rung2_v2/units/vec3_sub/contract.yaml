@@ -1,0 +1,4 @@
+function_name: "vec3_sub"
+signature: "def vec3_sub(a, b) -> tuple"
+description: "Subtract two 3D vectors element-wise."
+notes: "(5,7,9), (4,5,6) -> (1,2,3)"

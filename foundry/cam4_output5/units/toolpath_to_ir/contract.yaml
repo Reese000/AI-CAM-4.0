@@ -1,0 +1,6 @@
+function_name: "toolpath_to_ir"
+signature: "def toolpath_to_ir(toolpath) -> list[dict]"
+description: >
+  Convert toolpath segments to intermediate representation with normalized coordinates
+notes: >
+  [{'type': 'line', 'start': (0,0,0), 'end': (10,0,0)}] -> [{'ir': 'G1', 'X': 10.0, 'Y': 0.0, 'Z': 0.0}]

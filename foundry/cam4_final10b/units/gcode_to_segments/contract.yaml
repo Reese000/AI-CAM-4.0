@@ -1,0 +1,6 @@
+function_name: "gcode_to_segments"
+signature: "def gcode_to_segments(commands: list[dict]) -> list[dict]"
+description: "Convert G-code commands to linear/circular toolpath segments"
+notes: >
+  [{'cmd': 'G1', 'args': {'X': 10.0, 'Y': 0.0}}] -> [{'type': 'linear', 'start': (0,0,0), 'end': (10,0,0)}]
+  [{'cmd': 'G2', 'args': {'X': 5.0, 'Y': 5.0, 'I': 2.5, 'J': 0.0}}] -> [{'type': 'arc', 'center': (2.5,0,0), 'start': (0,0,0), 'end': (5,5,0)}]

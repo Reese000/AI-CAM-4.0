@@ -1,0 +1,14 @@
+{
+  "deps": [
+    "bbox_from_points",
+    "vec3_add",
+    "vec3_length"
+  ],
+  "description": "Generate adaptive clearing toolpath",
+  "examples": [
+    "({'dims': (10,10,5), 'resolution': 0.5}, {'diameter': 5, 'length': 20}) -> [{'type': 'line', 'start': (0,0,-1), 'end': (10,0,-1)}, {'type': 'arc', 'start': (10,0,-1), 'end': (10,5,-1), 'center': (7.5,2.5,-1)}]",
+    "({'dims': (5,5,5), 'resolution': 0.5}, {'diameter': 2, 'length': 10}) -> [{'type': 'line', 'start': (0,0,-1), 'end': (5,0,-1)}, {'type': 'arc', 'start': (5,0,-1), 'end': (5,2.5,-1), 'center': (3.75,1.25,-1)}]"
+  ],
+  "id": "adaptive_clearing_paths",
+  "signature": "def adaptive_clearing_paths(stock: dict, tool: dict) -> list[dict[str, any]]"
+}

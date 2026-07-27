@@ -1,0 +1,13 @@
+{
+  "deps": [
+    "stock_heightmap",
+    "vec3_length"
+  ],
+  "description": "Simulate material removal and return animation frames",
+  "examples": [
+    "([[5.0]*10 for _ in range(10)], [{'type': 'line', 'start': (0,0,0), 'end': (10,0,0)}]) -> [[[5.0]*10 for _ in range(10)], [[0.0]+[5.0]*9 for _ in range(10)]]",
+    "([[5.0]*10 for _ in range(10)], [{'type': 'line', 'start': (0,0,0), 'end': (5,0,0)}]) -> [[[5.0]*10 for _ in range(10)], [[0.0]*5+[5.0]*5 for _ in range(10)]]"
+  ],
+  "id": "simulate_toolpath",
+  "signature": "def simulate_toolpath(stock: list[list[float]], toolpath: list[dict[str, any]]) -> list[list[list[float]]]"
+}

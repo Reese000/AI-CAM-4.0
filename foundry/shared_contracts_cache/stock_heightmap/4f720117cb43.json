@@ -1,0 +1,10 @@
+{
+  "deps": [],
+  "description": "Create Z-map heightfield initialized to stock top Z coordinate",
+  "examples": [
+    "stock_dims = (10, 10, 5), resolution = 2 -> [[5.0, 5.0], [5.0, 5.0]]",
+    "stock_dims = (4, 6, 2), resolution = 3 -> [[2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0, 2.0, 2.0]]"
+  ],
+  "id": "stock_heightmap",
+  "signature": "def stock_heightmap(stock_dims: tuple[float, float, float], resolution: int) -> list[list[float]]"
+}

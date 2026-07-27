@@ -1,0 +1,6 @@
+function_name: "render_heidenhain"
+signature: "def render_heidenhain(ir_segments) -> str"
+description: "Render intermediate representation to Heidenhain G-code with proper formatting"
+notes: >
+  ([{"type": "move", "from": (0,0,5), "to": (10,0,0), "feed": 100.0}]) -> "0 BEGIN PGM 1 MM\n1 TOOL CALL 1 Z S1000\n2 L Z+5 R0 FMAX\n3 L X+0 Y+0 Z+5 R0 FMAX\n4 L X+10 Y+0 Z+0 R0 F100\n5 END PGM 1 MM"
+  ([{"type": "move", "from": (0,0,5), "to": (10,0,0), "feed": 100.0}, {"type": "move", "from": (10,0,0), "to": (10,10,0), "feed": 100.0}]) -> "0 BEGIN PGM 1 MM\n1 TOOL CALL 1 Z S1000\n2 L Z+5 R0 FMAX\n3 L X+0 Y+0 Z+5 R0 FMAX\n4 L X+10 Y+0 Z+0 R0 F100\n5 L X+10 Y+10 Z+0 R0 F100\n6 END PGM 1 MM"

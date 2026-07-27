@@ -1,0 +1,12 @@
+{
+  "deps": [
+    "vec3_length"
+  ],
+  "description": "Simulate material removal and return frame sequence",
+  "examples": [
+    "stock=[[5.0]], toolpath=[((0,0,4),(0,0,0))] -> [stock_frames]",
+    "stock=[[5.0]], toolpath=[] -> [original_stock]"
+  ],
+  "id": "simulate_toolpath",
+  "signature": "def simulate_toolpath(stock: list[list[float]], toolpath: list[tuple[tuple[float, float, float], tuple[float, float, float]]]) -> list[list[list[float]]]"
+}

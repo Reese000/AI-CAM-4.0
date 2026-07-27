@@ -1,0 +1,10 @@
+{
+  "deps": [],
+  "description": "Convert G-code commands to toolpath segments",
+  "examples": [
+    "[{'G': 0, 'X': 0, 'Y': 0}, {'G': 1, 'X': 1, 'Y': 1}] -> [{'type': 'line', 'start': (0,0,0), 'end': (1,1,0)}]",
+    "[{'G': 0, 'X': 0, 'Y': 0}, {'G': 1, 'X': 1, 'Y': 1, 'Z': -1}] -> [{'type': 'line', 'start': (0,0,0), 'end': (1,1,-1)}]"
+  ],
+  "id": "gcode_to_segments",
+  "signature": "def gcode_to_segments(commands: list[dict[str, any]]) -> list[dict[str, any]]"
+}

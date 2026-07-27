@@ -1,0 +1,7 @@
+function_name: "bbox_from_points"
+signature: >
+  def bbox_from_points(points: list[tuple[float, float, float]]) -> tuple[tuple[float, float, float], tuple[float, float, float]]
+description: "Compute axis-aligned bounding box from list of points"
+notes: >
+  [((1,2,3), (4,5,6), (-1,0,2))] -> ((-1, 0, 2), (4, 5, 6))
+  [((0,0,0))] -> ((0, 0, 0), (0, 0, 0))

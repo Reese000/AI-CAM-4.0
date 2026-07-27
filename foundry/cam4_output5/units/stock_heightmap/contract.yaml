@@ -1,0 +1,4 @@
+function_name: "stock_heightmap"
+signature: "def stock_heightmap(stock_dims, resolution) -> list[list[float]]"
+description: "Create Z-map heightfield representing initial stock material"
+notes: "(100.0, 100.0, 10.0), 2 -> [[10.0, 10.0], [10.0, 10.0]]"

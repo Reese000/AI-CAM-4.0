@@ -1,0 +1,5 @@
+function_name: "simulate_toolpath"
+signature: >
+  def simulate_toolpath(stock: np.ndarray, toolpath: List[Tuple[float, float, float]]) -> List[np.ndarray]
+description: "Simulate material removal and return frame sequence"
+notes: "(heightmap, [(5.0, 5.0, 0.0), (5.0, 5.0, -1.0)]) -> [array1, array2]"

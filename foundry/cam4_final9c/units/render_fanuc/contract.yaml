@@ -1,0 +1,6 @@
+function_name: "render_fanuc"
+signature: "def render_fanuc(ir_segments: list[dict]) -> str"
+description: "Render intermediate representation to Fanuc-style G-code"
+notes: >
+  [{'cmd': 'G1', 'x': 10.0, 'y': 0.0}] -> 'G1 X10.0 Y0.0'
+  [{'cmd': 'G2', 'x': 5.0, 'y': 5.0, 'i': 2.5, 'j': 0.0}] -> 'G2 X5.0 Y5.0 I2.5 J0.0'

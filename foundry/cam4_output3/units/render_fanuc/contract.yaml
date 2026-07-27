@@ -1,0 +1,5 @@
+function_name: "render_fanuc"
+signature: "def render_fanuc(ir_segments: list[dict]) -> str"
+description: "Renders Fanuc G-code from IR segments."
+notes: >
+  [{'start':(0.0,0.0,0.0), 'end':(10.0,0.0,0.0), 'feed':100.0}] -> 'G0 X0.0 Y0.0 Z0.0\nG1 X10.0 Y0.0 Z0.0 F100.0'

@@ -1,0 +1,17 @@
+{
+  "sub_units": [
+    {
+      "id": "vec3_component_sub",
+      "contract": {
+        "function_name": "vec3_component_sub",
+        "signature": "def vec3_component_sub(a: float, b: float) -> float",
+        "description": "Subtract scalar b from scalar a.",
+        "notes": "input -> outcome\n(10, 1) -> 9\n(0, 1) -> -1\n(5, 5) -> 0"
+      },
+      "oracle_py": "from __future__ import annotations\nimport importlib.util, os, sys\nimport pytest\n\ndef _load_candidate():\n    candidate_path = os.environ.get(\"FOUNDRY_CANDIDATE_PATH\")\n    if not candidate_path:\n        pytest.fail(\"FOUNDRY_CANDIDATE_PATH env var not set; oracle cannot locate candidate\")\n    spec = importlib.util.spec_from_file_location(\"candidate_under_test\", candidate_path)\n    module = importlib.util.module_from_spec(spec)\n    sys.modules[\"candidate_under_test\"] = module\n    spec.loader.exec_module(module)\n    return module\n\n@pytest.fixture(scope=\"module\")\ndef candidate():\n    return _load_candidate()\n\ndef test_1(candidate):\n    assert candidate.vec3_component_sub(10, 1) == 9\n\ndef test_2(candidate):\n    assert candidate.vec3_component_sub(0, 1) == -1\n\ndef test_3(candidate):\n    assert candidate.vec3_component_sub(5, 5) == 0",
+      "deps": []
+    }
+  ],
+  "parent_description": "Subtract vector b from vector a component-wise. Import and call vec3_component_sub for each of the three components: (a[0]-b[0], a[1]-b[1], a[2]-b[2]).",
+  "parent_notes": "(10, 20, 30), (1, 2, 3) -> (9, 18, 27)\n(0, 0, 0), (1, 1, 1) -> (-1, -1, -1)\n(5, 5, 5), (5, 5, 5) -> (0, 0, 0)"
+}

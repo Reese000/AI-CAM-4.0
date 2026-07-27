@@ -1,0 +1,4 @@
+function_name: "render_fanuc"
+signature: "def render_fanuc(ir_segments) -> str"
+description: "Render Fanuc G-code from IR segments."
+notes: "IR segments -> string of Fanuc G-code"

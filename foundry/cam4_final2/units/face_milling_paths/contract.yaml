@@ -1,0 +1,4 @@
+function_name: "face_milling_paths"
+signature: "def face_milling_paths(stock: dict, tool: dict) -> list[list[list[float]]]"
+description: "Generate zigzag face milling toolpath for given stock and tool."
+notes: "stock={dims}, tool={diameter} -> list of paths, each path is list of XYZ points"

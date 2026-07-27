@@ -1,0 +1,4 @@
+function_name: "render_heidenhain"
+signature: "def render_heidenhain(ir_segments) -> str"
+description: "Generate Heidenhain-compatible G-code from intermediate representation"
+notes: "[{'ir': 'G1', 'X': 10.0, 'Y': 0.0, 'Z': 0.0}] -> '1 L X+10.0 Y+0.0 Z+0.0 FMAX\n'"

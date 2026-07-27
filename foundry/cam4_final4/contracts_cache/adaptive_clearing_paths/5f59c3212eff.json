@@ -1,0 +1,14 @@
+{
+  "deps": [
+    "bbox_from_points",
+    "vec3_add",
+    "vec3_length"
+  ],
+  "description": "Generate adaptive clearing toolpath with constant engagement",
+  "examples": [
+    "stock={'dims':(10,10,5)}, tool={'diameter':2} -> [complex_spiral_paths]",
+    "stock with no material -> []"
+  ],
+  "id": "adaptive_clearing_paths",
+  "signature": "def adaptive_clearing_paths(stock: dict, tool: dict) -> list[tuple[tuple[float, float, float], tuple[float, float, float]]]"
+}

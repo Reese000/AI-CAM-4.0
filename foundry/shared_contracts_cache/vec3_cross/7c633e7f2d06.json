@@ -1,0 +1,10 @@
+{
+  "deps": [],
+  "description": "Compute cross product of two 3D vectors",
+  "examples": [
+    "(1, 0, 0) \u00d7 (0, 1, 0) -> (0, 0, 1)",
+    "(2, 3, 4) \u00d7 (5, 6, 7) -> (-3, 6, -3)"
+  ],
+  "id": "vec3_cross",
+  "signature": "def vec3_cross(a: tuple[float, float, float], b: tuple[float, float, float]) -> tuple[float, float, float]"
+}

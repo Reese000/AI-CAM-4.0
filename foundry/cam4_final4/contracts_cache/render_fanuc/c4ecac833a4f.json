@@ -1,0 +1,12 @@
+{
+  "deps": [
+    "vec3_length"
+  ],
+  "description": "Render IR segments to Fanuc G-code string",
+  "examples": [
+    "[{'type':'move','start':(0,0,0),'end':(10,0,0)}] -> 'G0 X0 Y0 Z0\\nG1 X10'",
+    "[] -> ''"
+  ],
+  "id": "render_fanuc",
+  "signature": "def render_fanuc(ir_segments: list[dict]) -> str"
+}

@@ -1,0 +1,7 @@
+function_name: "bbox_contains"
+signature: >
+  def bbox_contains(bbox: tuple[tuple[float, float, float], tuple[float, float, float]], point: tuple[float, float, float]) -> bool
+description: "Test if point is inside or on the boundary of a bounding box"
+notes: >
+  bbox=((0.0, 0.0, 0.0), (1.0, 1.0, 1.0)), point=(0.5, 0.5, 0.5) -> True
+  bbox=((0.0, 0.0, 0.0), (1.0, 1.0, 1.0)), point=(1.5, 0.5, 0.5) -> False

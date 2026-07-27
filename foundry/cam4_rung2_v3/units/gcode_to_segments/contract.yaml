@@ -1,0 +1,6 @@
+function_name: "gcode_to_segments"
+signature: "def gcode_to_segments(commands: list[dict]) -> list[dict]"
+description: "Convert parsed G-code commands to 3D line segments with attributes"
+notes: >
+  [{'G': 0, 'X': 0, 'Y': 0, 'Z': 0}, {'G': 1, 'X': 10, 'Y': 0, 'Z': 0}] -> [{'start': (0,0,0), 'end': (10,0,0), 'type': 'rapid'}, {'start': (10,0,0), 'end': (10,0,0), 'type': 'cut'}]
+  More complex with feed rates

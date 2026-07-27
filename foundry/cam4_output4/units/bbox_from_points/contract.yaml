@@ -1,0 +1,4 @@
+function_name: "bbox_from_points"
+signature: "def bbox_from_points(points: List[np.ndarray]) -> Tuple[np.ndarray, np.ndarray]"
+description: "Compute the axis-aligned bounding box from a list of 3D points."
+notes: "points=[[0,0,0], [1,1,1]] -> bbox_min=[0,0,0], bbox_max=[1,1,1]"

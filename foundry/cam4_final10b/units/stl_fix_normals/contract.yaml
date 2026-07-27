@@ -1,0 +1,9 @@
+function_name: "stl_fix_normals"
+signature: >
+  def stl_fix_normals(vertices: list[tuple[float, float, float]], faces: list[tuple[int, int, int]]) -> list[tuple[float, float, float]]
+description: "Fix inverted normals in STL mesh by ensuring consistent outward orientation"
+notes: >
+  3 vertices at (0,0,0),(1,0,0),(0,1,0) with face normals pointing down -> corrected normals pointing up
+  6 vertices forming cube with some inverted normals -> all normals point outward
+
+verification_level: behavioral

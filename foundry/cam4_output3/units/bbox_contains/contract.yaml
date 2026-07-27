@@ -1,0 +1,4 @@
+function_name: "bbox_contains"
+signature: "def bbox_contains(bbox, point) -> bool"
+description: "Tests if a point lies within a bounding box."
+notes: "(0.0, 0.0, 0.0, 1.0, 2.0, 3.0), (0.5, 1.0, 2.0) -> True"

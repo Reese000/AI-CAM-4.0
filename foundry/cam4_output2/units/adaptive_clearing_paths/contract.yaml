@@ -1,0 +1,6 @@
+function_name: "adaptive_clearing_paths"
+signature: >
+  def adaptive_clearing_paths(stock: tuple[tuple[float, float, float], tuple[float, float, float]], tool: dict) -> list[tuple[tuple[float, float, float], tuple[float, float, float]]]
+description: "Generate toolpath segments for adaptive clearing strategy"
+notes: >
+  [((0,0,0), (10,10,5)), {'diameter': 2.0}] -> [((0.0,0.0,0.0), (10.0,0.0,0.0)), ((10.0,0.0,0.0), (10.0,10.0,0.0))]

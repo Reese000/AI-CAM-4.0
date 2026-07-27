@@ -1,0 +1,6 @@
+function_name: "parse_gcode"
+signature: "def parse_gcode(text: str) -> list[dict[str, float]]"
+description: "Parse G-code text into command list with parameters"
+notes: >
+  'G0 X10 Y20 Z30\nG1 X5 Y5 Z5 F100' -> [{'code':0,'params':{'X':10,'Y':20,'Z':30}}, {'code':1,'params':{'X':5,'Y':5,'Z':5,'F':100}}]
+  'G0 Z5\nM3 S1000' -> [{'code':0,'params':{'Z':5}}, {'code':3,'params':{'S':1000}}]

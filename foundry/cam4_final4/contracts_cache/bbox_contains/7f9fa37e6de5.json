@@ -1,0 +1,10 @@
+{
+  "deps": [],
+  "description": "Test if point is inside or on bounding box",
+  "examples": [
+    "bbox=((0,0,0),(10,10,10)), point=(5,5,5) -> True",
+    "bbox=((0,0,0),(10,10,10)), point=(11,5,5) -> False"
+  ],
+  "id": "bbox_contains",
+  "signature": "def bbox_contains(bbox: tuple[tuple[float, float, float], tuple[float, float, float]], point: tuple[float, float, float]) -> bool"
+}

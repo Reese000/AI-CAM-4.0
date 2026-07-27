@@ -1,0 +1,4 @@
+function_name: "vec3_dot"
+signature: "def vec3_dot(a: np.ndarray, b: np.ndarray) -> float"
+description: "Compute the dot product of two 3D vectors."
+notes: "a=[1,0,0], b=[0,1,0] -> 0.0"

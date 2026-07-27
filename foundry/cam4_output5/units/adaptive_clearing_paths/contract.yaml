@@ -1,0 +1,5 @@
+function_name: "adaptive_clearing_paths"
+signature: "def adaptive_clearing_paths(stock, tool) -> list[dict]"
+description: "Generate adaptive clearing toolpaths for roughing with constant chip load"
+notes: >
+  {'bbox': ((0,0,0),(100,100,10))}, {'diameter': 10.0} -> [{'type': 'helix', ...}, {'type': 'line', ...}]

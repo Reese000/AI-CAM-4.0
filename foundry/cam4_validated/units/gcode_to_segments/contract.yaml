@@ -1,0 +1,5 @@
+function_name: "gcode_to_segments"
+signature: >
+  def gcode_to_segments(commands: list[dict]) -> list[tuple[list[float], list[float]]]
+description: "Convert G-code commands into toolpath segments for visualization."
+notes: "list of commands -> list of line segments from start to end points"

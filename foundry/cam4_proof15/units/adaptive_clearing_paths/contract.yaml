@@ -1,0 +1,8 @@
+function_name: "adaptive_clearing_paths"
+signature: >
+  def adaptive_clearing_paths(stock, tool) -> list[tuple[tuple[float, float, float], tuple[float, float, float]]]
+description: >
+  Generate adaptive clearing toolpath for roughing operations with stock and tool parameters
+notes: >
+  (({"bbox": ((0,0,0), (100,100,20)), "model": "cylinder"}, {"diameter": 10.0, "stepover": 5.0})) -> [((10,10,20), (90,10,20)), ((90,20,20), (10,20,20))] (simplified)
+  (({"bbox": ((0,0,0), (50,50,10)), "model": "box"}, {"diameter": 12.0, "stepover": 6.0})) -> [((6,6,10), (44,6,10)), ((44,12,10), (6,12,10))] (simplified)

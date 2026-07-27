@@ -1,0 +1,7 @@
+function_name: "toolpath_to_ir"
+signature: >
+  def toolpath_to_ir(toolpath: list[tuple[tuple[float, float, float], tuple[float, float, float]]]) -> list[dict]
+description: "Convert toolpath to intermediate representation for post-processors"
+notes: >
+  [((0,0,0),(10,0,0))] -> [{'type':'move','start':(0,0,0),'end':(10,0,0)}]
+  [] -> []

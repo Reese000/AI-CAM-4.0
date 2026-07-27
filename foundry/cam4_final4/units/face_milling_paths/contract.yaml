@@ -1,0 +1,7 @@
+function_name: "face_milling_paths"
+signature: >
+  def face_milling_paths(stock: dict, tool: dict) -> list[tuple[tuple[float, float, float], tuple[float, float, float]]]
+description: "Generate face milling toolpath for top surface"
+notes: >
+  stock={'dims':(10,10,5)}, tool={'diameter':1} -> [((0,0,5),(10,0,5)),...]
+  stock with zero area -> []

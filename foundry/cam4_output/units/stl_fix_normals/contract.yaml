@@ -1,0 +1,7 @@
+function_name: "stl_fix_normals"
+signature: >
+  def stl_fix_normals(vertices: list[tuple[float,float,float]], faces: list[tuple[int,int,int]]) -> list[tuple[float,float,float]]
+description: "Ensure normals point outward by checking cross product orientation"
+notes: >
+  [(0,0,0),(1,0,0),(0,1,0)], [(0,1,2)] -> [(0,0,1)] (if inward, flips to outward)
+  [(0,0,0),(1,0,0),(0,1,0)], [(0,2,1)] -> [(0,0,-1)] (already outward)

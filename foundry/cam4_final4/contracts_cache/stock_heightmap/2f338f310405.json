@@ -1,0 +1,10 @@
+{
+  "deps": [],
+  "description": "Create Z-map heightfield stock model",
+  "examples": [
+    "(10.0, 10.0, 5.0), 2.0 -> [[5.0,5.0,5.0,...],...]",
+    "(0.0, 0.0, 0.0), 1.0 -> []"
+  ],
+  "id": "stock_heightmap",
+  "signature": "def stock_heightmap(stock_dims: tuple[float, float, float], resolution: float) -> list[list[float]]"
+}

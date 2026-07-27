@@ -1,0 +1,10 @@
+{
+  "deps": [],
+  "description": "Compute dot product of two 3D vectors",
+  "examples": [
+    "(1, 0, 0) \u2022 (0, 1, 0) -> 0",
+    "(2, 3, 4) \u2022 (5, 6, 7) -> 32"
+  ],
+  "id": "vec3_dot",
+  "signature": "def vec3_dot(a: tuple[float, float, float], b: tuple[float, float, float]) -> float"
+}

@@ -1,0 +1,6 @@
+function_name: "render_heidenhain"
+signature: >
+  def render_heidenhain(ir_segments: List[Tuple[str, Tuple[float, float, float], Tuple[float, float, float]]]) -> str
+description: "Render Heidenhain G-code from intermediate representation"
+notes: >
+  ([('linear', (0.0, 0.0, 0.0), (10.0, 0.0, 0.0))]) -> '0 G00 X0.000 Y0.000 Z0.000\n1 G01 X10.000 Y0.000 Z0.000'

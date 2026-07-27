@@ -1,0 +1,4 @@
+function_name: "toolpath_to_ir"
+signature: "def toolpath_to_ir(toolpath: list) -> list"
+description: "Convert toolpath segments to an intermediate representation for post-processing."
+notes: "toolpath segments -> [{'cmd': 'G0', 'X': 10, 'Y': 20}]"

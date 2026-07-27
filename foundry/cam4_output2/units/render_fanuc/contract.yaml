@@ -1,0 +1,5 @@
+function_name: "render_fanuc"
+signature: "def render_fanuc(ir_segments: list[dict]) -> str"
+description: "Generate Fanuc G-code from intermediate representation"
+notes: >
+  [{'type': 'move', 'start': (0.0,0.0,0.0), 'end': (10.0,10.0,0.0)}] -> 'G0 X0.000 Y0.000 Z0.000\nG1 X10.000 Y10.000 Z0.000'

@@ -1,0 +1,4 @@
+function_name: "simulate_toolpath"
+signature: "def simulate_toolpath(stock: dict, toolpath: list[dict]) -> list[dict]"
+description: "Simulate material removal using Z-map, return frame sequence"
+notes: "stock_heightmap, toolpath -> [{'heightmap':[[...]], 'time':0},...]"

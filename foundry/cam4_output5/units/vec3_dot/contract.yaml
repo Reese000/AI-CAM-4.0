@@ -1,0 +1,4 @@
+function_name: "vec3_dot"
+signature: "def vec3_dot(a, b) -> float"
+description: "Compute dot product of two 3D vectors"
+notes: "(1, 0, 0), (0, 1, 0) -> 0"

@@ -1,0 +1,7 @@
+function_name: "simulate_toolpath"
+signature: >
+  def simulate_toolpath(stock: list[list[float]], toolpath: list[tuple[tuple[float,float,float], tuple[float,float,float]]]) -> list[list[list[float]]]
+description: "Simulate material removal, return heightmap frames"
+notes: >
+  10x10 grid of 5.0, [(0,0,2), (10,10,2)] -> [grid with material removed along path]
+  5x5 grid of 3.0, [((0,0,1), (5,0,1))] -> [grid with trench at y=0]

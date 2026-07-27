@@ -1,0 +1,4 @@
+function_name: "vec3_normalize"
+signature: "def vec3_normalize(v: list[float]) -> list[float]"
+description: "Return unit vector in same direction as input (zero vector returns zero)."
+notes: "[3.0, 0.0, 4.0] -> [0.6, 0.0, 0.8]"

@@ -1,0 +1,13 @@
+{
+  "deps": [
+    "bbox_from_points",
+    "vec3_add",
+    "vec3_length"
+  ],
+  "description": "Generate pocket clearing toolpath for enclosed areas.",
+  "examples": [
+    "stock and tool parameters -> list of toolpath points"
+  ],
+  "id": "pocketing_paths",
+  "signature": "def pocketing_paths(stock: dict, tool: dict) -> list[list[float]]"
+}

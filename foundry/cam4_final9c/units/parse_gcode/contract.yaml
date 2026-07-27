@@ -1,0 +1,6 @@
+function_name: "parse_gcode"
+signature: "def parse_gcode(text: str) -> list[dict]"
+description: "Parse G-code text into structured command list with line numbers"
+notes: >
+  'G0 X0 Y0\nG1 X10 Y0 F100' -> [{'line': 1, 'cmd': 'G0', 'args': {'X': 0.0, 'Y': 0.0}}, {'line': 2, 'cmd': 'G1', 'args': {'X': 10.0, 'Y': 0.0, 'F': 100.0}}]
+  'M3 S1000\n; comment\nG2 X5 Y5 I2.5 J0' -> [{'line': 1, 'cmd': 'M3', 'args': {'S': 1000.0}}, {'line': 3, 'cmd': 'G2', 'args': {'X': 5.0, 'Y': 5.0, 'I': 2.5, 'J': 0.0}}]

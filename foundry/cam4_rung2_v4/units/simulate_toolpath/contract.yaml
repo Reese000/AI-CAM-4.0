@@ -1,0 +1,5 @@
+function_name: "simulate_toolpath"
+signature: "def simulate_toolpath(stock: numpy.ndarray, toolpath: list) -> list"
+description: >
+  Simulate material removal using toolpath and stock heightmap, return frames for visualization.
+notes: "stock_heightmap, toolpath -> [numpy array frame1, frame2, ...]"

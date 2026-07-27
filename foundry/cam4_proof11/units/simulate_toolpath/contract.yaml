@@ -1,0 +1,7 @@
+function_name: "simulate_toolpath"
+signature: "def simulate_toolpath(stock, toolpath) -> list[list[list[float]]]"
+description: >
+  Simulate material removal along toolpath, returning heightmap frames for animation
+notes: >
+  ([[[20.0]*10]*10], [((0,0,10), (100,0,10))]) -> [[[[10.0]*10]*10]] (first frame after first segment)
+  ([[[5.0]*5]*5], [((0,0,3), (50,0,3))]) -> [[[[3.0]*5]*5]] (first frame after first segment)

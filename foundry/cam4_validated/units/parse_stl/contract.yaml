@@ -1,0 +1,5 @@
+function_name: "parse_stl"
+signature: >
+  def parse_stl(path: str) -> tuple[list[list[float]], list[list[float]], list[list[int]]]
+description: "Parse a binary or ASCII STL file and return vertices, normals, and faces."
+notes: "path to a valid STL file -> (vertices, normals, faces)"

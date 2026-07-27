@@ -1,0 +1,4 @@
+function_name: "stock_heightmap"
+signature: "def stock_heightmap(stock_dims: list[float], resolution: float) -> dict"
+description: "Create Z-map heightfield representation of stock"
+notes: "[100,100,10], 1.0 -> {'grid':[[10.0,...]], 'size':[100,100], 'res':1.0}"

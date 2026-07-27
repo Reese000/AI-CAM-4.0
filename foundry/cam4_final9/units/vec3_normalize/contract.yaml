@@ -1,0 +1,6 @@
+function_name: "vec3_normalize"
+signature: "def vec3_normalize(v: tuple[float, float, float]) -> tuple[float, float, float]"
+description: "Normalize vector to unit length, return zero vector for zero input"
+notes: >
+  (3.0, 4.0, 0.0) -> (0.6, 0.8, 0.0)
+  (0.0, 0.0, 0.0) -> (0.0, 0.0, 0.0)

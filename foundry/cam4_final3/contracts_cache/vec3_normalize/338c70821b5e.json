@@ -1,0 +1,10 @@
+{
+  "deps": [],
+  "description": "Normalize vector to unit length",
+  "examples": [
+    "((1.0, 0.0, 0.0)) -> (1.0, 0.0, 0.0)",
+    "((3.0, 4.0, 0.0)) -> (0.6, 0.8, 0.0)"
+  ],
+  "id": "vec3_normalize",
+  "signature": "def vec3_normalize(v: tuple[float, float, float]) -> tuple[float, float, float]"
+}

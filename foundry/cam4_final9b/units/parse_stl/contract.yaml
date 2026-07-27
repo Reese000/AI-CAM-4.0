@@ -1,0 +1,7 @@
+function_name: "parse_stl"
+signature: >
+  def parse_stl(path: str) -> tuple[list[tuple[float, float, float]], list[tuple[float, float, float]], list[tuple[int, int, int]]]
+description: "Parse binary/ASCII STL file into vertices, normals, and faces"
+notes: >
+  '/tmp/test_ascii.stl' with 2 triangles -> ([[0,0,0],[1,0,0],[0,1,0]], [[0,0,0],[1,0,0],[0,1,0]], [[0,1,2],[3,4,5]])
+  '/tmp/test_binary.stl' with 1 triangle -> ([[0,0,0],[1,0,0],[0,1,0]], [[0,0,1],[0,0,1],[0,0,1]], [[0,1,2]])

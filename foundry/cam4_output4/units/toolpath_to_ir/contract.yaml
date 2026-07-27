@@ -1,0 +1,5 @@
+function_name: "toolpath_to_ir"
+signature: "def toolpath_to_ir(toolpath: List[Tuple[np.ndarray, np.ndarray]]) -> List[Dict]"
+description: "Convert toolpath segments to an intermediate representation for post-processing."
+notes: >
+  toolpath=[[ [0,0,0], [1,1,0] ]] -> [{'type': 'move', 'start': [0,0,0], 'end': [1,1,0]}]

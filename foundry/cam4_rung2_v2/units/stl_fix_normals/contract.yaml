@@ -1,0 +1,4 @@
+function_name: "stl_fix_normals"
+signature: "def stl_fix_normals(vertices, faces) -> tuple"
+description: "Fix inverted normals in an STL mesh by flipping them if necessary."
+notes: "vertices, faces of a cube -> (fixed_vertices, fixed_faces)"

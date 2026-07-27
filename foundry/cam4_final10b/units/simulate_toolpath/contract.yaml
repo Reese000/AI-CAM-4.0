@@ -1,0 +1,8 @@
+function_name: "simulate_toolpath"
+signature: "def simulate_toolpath(stock: dict, toolpath: list[dict]) -> list[dict]"
+description: "Simulate material removal from stock, return simulation frames"
+notes: >
+  stock heightmap 100x100 with toolpath removing top layer -> frames showing progressive material removal
+  complex stock with pocket toolpath -> frames with pocket formation
+
+verification_level: behavioral

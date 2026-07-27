@@ -1,0 +1,4 @@
+function_name: "vec3_length"
+signature: "def vec3_length(v: np.ndarray) -> float"
+description: "Compute the magnitude (length) of a 3D vector."
+notes: "v=[3,4,0] -> 5.0"

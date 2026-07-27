@@ -1,0 +1,14 @@
+{
+  "deps": [
+    "bbox_from_points",
+    "vec3_add",
+    "vec3_length"
+  ],
+  "description": "Generate pocket clearing toolpath with offset patterns",
+  "examples": [
+    "stock={'dims':(10,10,5)}, tool={'diameter':1} -> [concentric_offset_paths]",
+    "stock with small area -> [single_path]"
+  ],
+  "id": "pocketing_paths",
+  "signature": "def pocketing_paths(stock: dict, tool: dict) -> list[tuple[tuple[float, float, float], tuple[float, float, float]]]"
+}

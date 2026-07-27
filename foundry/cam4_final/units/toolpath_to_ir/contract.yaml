@@ -1,0 +1,6 @@
+function_name: "toolpath_to_ir"
+signature: >
+  def toolpath_to_ir(toolpath: List[Tuple[float, float, float]]) -> List[Tuple[str, Tuple[float, float, float], Tuple[float, float, float]]]
+description: "Convert toolpath points to intermediate representation for post-processing"
+notes: >
+  ([(0.0, 0.0, 0.0), (10.0, 0.0, 0.0)]) -> [('linear', (0.0, 0.0, 0.0), (10.0, 0.0, 0.0))]

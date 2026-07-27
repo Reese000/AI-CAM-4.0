@@ -1,0 +1,11 @@
+{
+  "deps": [
+    "vec3_length"
+  ],
+  "description": "Normalize a 3D vector to unit length.",
+  "examples": [
+    "[3, 4, 0] -> [0.6, 0.8, 0.0]"
+  ],
+  "id": "vec3_normalize",
+  "signature": "def vec3_normalize(v: list[float]) -> list[float]"
+}

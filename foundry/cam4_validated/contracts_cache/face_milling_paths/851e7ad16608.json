@@ -1,0 +1,13 @@
+{
+  "deps": [
+    "bbox_from_points",
+    "vec3_add",
+    "vec3_length"
+  ],
+  "description": "Generate face milling toolpath for a given stock and tool.",
+  "examples": [
+    "stock and tool parameters -> list of toolpath points"
+  ],
+  "id": "face_milling_paths",
+  "signature": "def face_milling_paths(stock: dict, tool: dict) -> list[list[float]]"
+}

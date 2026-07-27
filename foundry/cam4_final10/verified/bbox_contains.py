@@ -1,0 +1,2 @@
+def bbox_contains(bbox: tuple[tuple[float, float, float], tuple[float, float, float]], point: tuple[float, float, float]) -> bool:
+    return all(bbox[0][i] <= point[i] <= bbox[1][i] for i in range(3))
