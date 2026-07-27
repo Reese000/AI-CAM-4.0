@@ -12,7 +12,7 @@ from typing import Any
 import numpy as np
 
 from kernel.strategies.base import BaseStrategy, OperationParams
-from kernel.types import BBox, ToolpathData, ToolDef, Vec3
+from kernel.types import BBox, Move, MoveType, ToolpathData, ToolDef, Vec3
 
 
 class FaceMillingStrategy(BaseStrategy):
@@ -90,8 +90,8 @@ class FaceMillingStrategy(BaseStrategy):
         feed = kwargs.get("feed_rate", 1000.0)
         speed = kwargs.get("spindle_speed", 10000.0)
         clearance = kwargs.get("clearance_height", 5.0)
-        top_z = kwargs.get("top_of_stock", stock.max_point.z)
-        bottom_z = kwargs.get("bottom_of_stock", stock.min_point.z)
+        top_z = kwargs.get("top_of_stock", stock.max.z)
+        bottom_z = kwargs.get("bottom_of_stock", stock.min.z)
 
         # Compute pass parameters
         tool_radius = tool.effective_radius
@@ -99,10 +99,10 @@ class FaceMillingStrategy(BaseStrategy):
         depth_of_cut = top_z - bottom_z
 
         # Stock bounds
-        x_min = stock.min_point.x + tool_radius
-        x_max = stock.max_point.x - tool_radius
-        y_min = stock.min_point.y + tool_radius
-        y_max = stock.max_point.y - tool_radius
+        x_min = stock.min.x + tool_radius
+        x_max = stock.max.x - tool_radius
+        y_min = stock.min.y + tool_radius
+        y_max = stock.max.y - tool_radius
 
         # Y positions for each pass
         y_positions = np.arange(y_min, y_max + stepover * 0.01, stepover)
@@ -118,8 +118,8 @@ class FaceMillingStrategy(BaseStrategy):
         z_levels.append(bottom_z)
 
         tp = ToolpathData(
-            metadata={
-                "strategy": self.name,
+            strategy=self.name,
+            params={
                 "tool_diameter": tool.diameter,
                 "total_passes": len(z_levels) * len(y_positions),
             }
@@ -129,20 +129,10 @@ class FaceMillingStrategy(BaseStrategy):
         for z_level in z_levels:
             # Lead-in rapid
             start_y = y_positions[0]
-            tp.append(
-                point=Vec3(x_min - 5.0, start_y, clearance),
-                speed=speed,
-                feed=0.0,
-                rapid=True,
-            )
+            tp.moves.append(Move(move_type=MoveType.RAPID, end=Vec3(x_min - 5.0, start_y, clearance), spindle_speed=speed, feed=0.0))
 
             # Rapid down to Z level
-            tp.append(
-                point=Vec3(x_min - 5.0, start_y, z_level),
-                speed=speed,
-                feed=0.0,
-                rapid=True,
-            )
+            tp.moves.append(Move(move_type=MoveType.RAPID, end=Vec3(x_min - 5.0, start_y, z_level), spindle_speed=speed, feed=0.0))
 
             for i, y in enumerate(y_positions):
                 if i % 2 == 0:
@@ -155,57 +145,19 @@ class FaceMillingStrategy(BaseStrategy):
                     end = Vec3(x_min, y, z_level)
 
                 # Lead-in
-                tp.append(
-                    point=start,
-                    speed=speed,
-                    feed=feed,
-                    rapid=False,
-                )
+                tp.moves.append(Move(move_type=MoveType.LINEAR, end=start, spindle_speed=speed, feed=feed))
 
                 # Cutting pass
-                tp.append(
-                    point=end,
-                    speed=speed,
-                    feed=feed,
-                    rapid=False,
-                )
+                tp.moves.append(Move(move_type=MoveType.LINEAR, end=end, spindle_speed=speed, feed=feed))
 
                 # Lift for repositioning (if more passes at this Z)
                 if i < len(y_positions) - 1:
                     next_y = y_positions[i + 1]
-                    tp.append(
-                        point=Vec3(end.x, end.y, z_level + 1.0),
-                        speed=speed,
-                        feed=0.0,
-                        rapid=True,
-                    )
-                    tp.append(
-                        point=Vec3(
-                            x_min if (i + 1) % 2 == 0 else x_max,
-                            next_y,
-                            z_level + 1.0,
-                        ),
-                        speed=speed,
-                        feed=0.0,
-                        rapid=True,
-                    )
-                    tp.append(
-                        point=Vec3(
-                            x_min if (i + 1) % 2 == 0 else x_max,
-                            next_y,
-                            z_level,
-                        ),
-                        speed=speed,
-                        feed=0.0,
-                        rapid=True,
-                    )
+                    tp.moves.append(Move(move_type=MoveType.RAPID, end=Vec3(end.x, end.y, z_level + 1.0), spindle_speed=speed, feed=0.0))
+                    tp.moves.append(Move(move_type=MoveType.RAPID, end=Vec3(x_min if (i + 1) % 2 == 0 else x_max, next_y, z_level + 1.0), spindle_speed=speed, feed=0.0))
+                    tp.moves.append(Move(move_type=MoveType.RAPID, end=Vec3(x_min if (i + 1) % 2 == 0 else x_max, next_y, z_level + 1.0), spindle_speed=speed, feed=0.0))
 
             # Lead-out rapid back to clearance
-            tp.append(
-                point=Vec3(stock.center.x, stock.center.y, clearance),
-                speed=speed,
-                feed=0.0,
-                rapid=True,
-            )
+            tp.moves.append(Move(move_type=MoveType.RAPID, end=Vec3(stock.center.x, stock.center.y, clearance), spindle_speed=speed, feed=0.0))
 
         return tp

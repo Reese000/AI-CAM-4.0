@@ -13,7 +13,7 @@ from typing import Any
 import numpy as np
 
 from kernel.strategies.base import BaseStrategy, OperationParams
-from kernel.types import BBox, ToolpathData, ToolDef, Vec3
+from kernel.types import BBox, Move, MoveType, ToolpathData, ToolDef, Vec3
 
 
 class PocketingStrategy(BaseStrategy):
@@ -83,20 +83,20 @@ class PocketingStrategy(BaseStrategy):
         feed = kwargs.get("feed_rate", 1500.0)
         speed = kwargs.get("spindle_speed", 10000.0)
         clearance = kwargs.get("clearance_height", 5.0)
-        top_z = kwargs.get("top_of_stock", stock.max_point.z)
-        bottom_z = kwargs.get("bottom_of_stock", stock.min_point.z)
+        top_z = kwargs.get("top_of_stock", stock.max.z)
+        bottom_z = kwargs.get("bottom_of_stock", stock.min.z)
 
         tool_radius = tool.effective_radius
         stepover = tool.diameter * stepover_frac
 
         # Stock bounds (with tool radius offset)
-        x_min = stock.min_point.x + tool_radius
-        x_max = stock.max_point.x - tool_radius
-        y_min = stock.min_point.y + tool_radius
-        y_max = stock.max_point.y - tool_radius
+        x_min = stock.min.x + tool_radius
+        x_max = stock.max.x - tool_radius
+        y_min = stock.min.y + tool_radius
+        y_max = stock.max.y - tool_radius
 
         if x_max <= x_min or y_max <= y_min:
-            tp = ToolpathData(metadata={"strategy": self.name, "error": "Stock too small for tool"})
+            tp = ToolpathData(strategy=self.name, params={"error": "Stock too small for tool"})
             return tp
 
         # Compute number of offset contours
@@ -121,8 +121,8 @@ class PocketingStrategy(BaseStrategy):
         z_levels.append(bottom_z)
 
         tp = ToolpathData(
-            metadata={
-                "strategy": self.name,
+            strategy=self.name,
+            params={
                 "tool_diameter": tool.diameter,
                 "z_levels": len(z_levels),
                 "offset_passes": len(offsets),
@@ -130,40 +130,28 @@ class PocketingStrategy(BaseStrategy):
         )
 
         for z_level in z_levels:
-            center_x = (stock.min_point.x + stock.max_point.x) / 2.0
-            center_y = (stock.min_point.y + stock.max_point.y) / 2.0
+            center_x = (stock.min.x + stock.max.x) / 2.0
+            center_y = (stock.min.y + stock.max.y) / 2.0
 
             # Lead-in
-            tp.append(
-                point=Vec3(center_x, center_y, clearance),
-                speed=speed, feed=0.0, rapid=True,
-            )
-            tp.append(
-                point=Vec3(center_x, center_y, z_level),
-                speed=speed, feed=0.0, rapid=True,
-            )
+            tp.moves.append(Move(move_type=MoveType.RAPID, end=Vec3(center_x, center_y, clearance), spindle_speed=speed, feed=0.0))
+            tp.moves.append(Move(move_type=MoveType.RAPID, end=Vec3(center_x, center_y, z_level), spindle_speed=speed, feed=0.0))
 
             # Generate offset contours from outside in
             for i, offset_val in enumerate(offsets):
                 # Rectangle contour at this offset
-                ox_min = stock.min_point.x + tool_radius + offset_val
-                ox_max = stock.max_point.x - tool_radius - offset_val
-                oy_min = stock.min_point.y + tool_radius + offset_val
-                oy_max = stock.max_point.y - tool_radius - offset_val
+                ox_min = stock.min.x + tool_radius + offset_val
+                ox_max = stock.max.x - tool_radius - offset_val
+                oy_min = stock.min.y + tool_radius + offset_val
+                oy_max = stock.max.y - tool_radius - offset_val
 
                 if ox_max < ox_min or oy_max < oy_min:
                     continue
 
                 # Rapid to start of this contour
                 contour_start = Vec3(ox_min, oy_min, z_level)
-                tp.append(
-                    point=Vec3(ox_min, oy_min, z_level + 1.0),
-                    speed=speed, feed=0.0, rapid=True,
-                )
-                tp.append(
-                    point=contour_start,
-                    speed=speed, feed=0.0, rapid=True,
-                )
+                tp.moves.append(Move(move_type=MoveType.RAPID, end=Vec3(ox_min, oy_min, z_level + 1.0), spindle_speed=speed, feed=0.0))
+                tp.moves.append(Move(move_type=MoveType.RAPID, end=contour_start, spindle_speed=speed, feed=0.0))
 
                 # Walk the rectangular contour
                 corners = [
@@ -174,17 +162,9 @@ class PocketingStrategy(BaseStrategy):
                 ]
 
                 for corner in corners:
-                    tp.append(
-                        point=corner,
-                        speed=speed,
-                        feed=feed,
-                        rapid=False,
-                    )
+                    tp.moves.append(Move(move_type=MoveType.LINEAR, end=corner, spindle_speed=speed, feed=feed))
 
             # Lead-out
-            tp.append(
-                point=Vec3(center_x, center_y, clearance),
-                speed=speed, feed=0.0, rapid=True,
-            )
+            tp.moves.append(Move(move_type=MoveType.RAPID, end=Vec3(center_x, center_y, clearance), spindle_speed=speed, feed=0.0))
 
         return tp

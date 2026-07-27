@@ -13,7 +13,7 @@ from typing import Any
 import numpy as np
 
 from kernel.strategies.base import BaseStrategy, OperationParams
-from kernel.types import BBox, ToolpathData, ToolDef, Vec3
+from kernel.types import BBox, Move, MoveType, ToolpathData, ToolDef, Vec3
 
 
 class AdaptiveClearingStrategy(BaseStrategy):
@@ -85,22 +85,22 @@ class AdaptiveClearingStrategy(BaseStrategy):
         feed = kwargs.get("feed_rate", 2000.0)
         speed = kwargs.get("spindle_speed", 12000.0)
         clearance = kwargs.get("clearance_height", 5.0)
-        top_z = kwargs.get("top_of_stock", stock.max_point.z)
-        bottom_z = kwargs.get("bottom_of_stock", stock.min_point.z)
+        top_z = kwargs.get("top_of_stock", stock.max.z)
+        bottom_z = kwargs.get("bottom_of_stock", stock.min.z)
 
         # Tool parameters
         tool_radius = tool.effective_radius
         stepover = tool.diameter * stepover_frac
 
         # Stock bounds (with tool radius offset)
-        x_min = stock.min_point.x + tool_radius
-        x_max = stock.max_point.x - tool_radius
-        y_min = stock.min_point.y + tool_radius
-        y_max = stock.max_point.y - tool_radius
+        x_min = stock.min.x + tool_radius
+        x_max = stock.max.x - tool_radius
+        y_min = stock.min.y + tool_radius
+        y_max = stock.max.y - tool_radius
 
         if x_max <= x_min or y_max <= y_min:
             # Stock too small for this tool
-            tp = ToolpathData(metadata={"strategy": self.name, "error": "Stock too small"})
+            tp = ToolpathData(strategy=self.name, params={"error": "Stock too small"})
             return tp
 
         # Adaptive engagement angle (radians)
@@ -117,8 +117,8 @@ class AdaptiveClearingStrategy(BaseStrategy):
         z_levels.append(bottom_z)
 
         tp = ToolpathData(
-            metadata={
-                "strategy": self.name,
+            strategy=self.name,
+            params={
                 "tool_diameter": tool.diameter,
                 "z_levels": len(z_levels),
             }
@@ -161,14 +161,8 @@ class AdaptiveClearingStrategy(BaseStrategy):
         max_radius = min(width, height) / 2.0
 
         # Lead-in
-        tp.append(
-            point=Vec3(center_x, center_y, clearance),
-            speed=speed, feed=0.0, rapid=True,
-        )
-        tp.append(
-            point=Vec3(center_x, center_y, z_level),
-            speed=speed, feed=0.0, rapid=True,
-        )
+        tp.moves.append(Move(move_type=MoveType.RAPID, end=Vec3(center_x, center_y, clearance), spindle_speed=speed, feed=0.0))
+        tp.moves.append(Move(move_type=MoveType.RAPID, end=Vec3(center_x, center_y, z_level), spindle_speed=speed, feed=0.0))
 
         # Generate expanding spiral passes
         radius = troch_step
@@ -190,12 +184,7 @@ class AdaptiveClearingStrategy(BaseStrategy):
                 px = np.clip(px, x_min, x_max)
                 py = np.clip(py, y_min, y_max)
 
-                tp.append(
-                    point=Vec3(px, py, z_level),
-                    speed=speed,
-                    feed=feed,
-                    rapid=False,
-                )
+                tp.moves.append(Move(move_type=MoveType.LINEAR, end=Vec3(px, py, z_level), spindle_speed=speed, feed=feed))
 
             radius += troch_step
 
@@ -207,14 +196,11 @@ class AdaptiveClearingStrategy(BaseStrategy):
             y = y_min + i * y_step
 
             if i % 2 == 0:
-                tp.append(point=Vec3(x_min, y, z_level), speed=speed, feed=feed, rapid=False)
-                tp.append(point=Vec3(x_max, y, z_level), speed=speed, feed=feed, rapid=False)
+                tp.moves.append(Move(move_type=MoveType.LINEAR, end=Vec3(x_min, y, z_level), spindle_speed=speed, feed=feed))
+                tp.moves.append(Move(move_type=MoveType.LINEAR, end=Vec3(x_max, y, z_level), spindle_speed=speed, feed=feed))
             else:
-                tp.append(point=Vec3(x_max, y, z_level), speed=speed, feed=feed, rapid=False)
-                tp.append(point=Vec3(x_min, y, z_level), speed=speed, feed=feed, rapid=False)
+                tp.moves.append(Move(move_type=MoveType.LINEAR, end=Vec3(x_max, y, z_level), spindle_speed=speed, feed=feed))
+                tp.moves.append(Move(move_type=MoveType.LINEAR, end=Vec3(x_min, y, z_level), spindle_speed=speed, feed=feed))
 
         # Lead-out
-        tp.append(
-            point=Vec3(center_x, center_y, clearance),
-            speed=speed, feed=0.0, rapid=True,
-        )
+        tp.moves.append(Move(move_type=MoveType.RAPID, end=Vec3(center_x, center_y, clearance), spindle_speed=speed, feed=0.0))
