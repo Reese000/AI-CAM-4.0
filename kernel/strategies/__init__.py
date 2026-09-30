@@ -12,12 +12,14 @@ Usage:
 from kernel.strategies.base import BaseStrategy
 from kernel.strategies.face_milling import FaceMillingStrategy
 from kernel.strategies.adaptive_clearing import AdaptiveClearingStrategy
+from kernel.strategies.adaptive_engagement import AdaptiveEngagementStrategy
 from kernel.strategies.pocketing import PocketingStrategy
 
 # Strategy registry — maps name to class
 _STRATEGIES: dict[str, type[BaseStrategy]] = {
     "face_milling": FaceMillingStrategy,
     "adaptive_clearing": AdaptiveClearingStrategy,
+    "adaptive_engagement": AdaptiveEngagementStrategy,
     "pocketing": PocketingStrategy,
 }
 
