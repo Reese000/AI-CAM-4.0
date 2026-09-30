@@ -24,7 +24,6 @@ import pytest
 
 from kernel.stl import parse_stl
 from kernel.strategies import get_strategy
-from kernel.strategies.adaptive_engagement import feed_vocabulary
 from kernel.strategies.base import OperationParams
 from kernel.types import BBox, MoveType, ToolDef, Vec3
 from post.fanuc import FanucRenderer
@@ -139,18 +138,20 @@ class TestF1EndToEnd:
         _, _, tp = toolpath_from_stl(tmp_path)
         assert tp.strategy == "adaptive_engagement"
         assert len(tp.moves) > 0
+        # R8's measured triplet at feed = 1000, written as literals rather
+        # than read back from the module under test.
         assert tp.params["feed_vocabulary"] == {
-            key: round(value, 6)
-            for key, value in feed_vocabulary(FEED).items()
+            "plunge": 333.333333,
+            "reduced": 900.0,
+            "cutting": 1000.0,
         }
 
     def test_only_measured_feeds_reach_the_toolpath(self, tmp_path):
         _, _, tp = toolpath_from_stl(tmp_path)
-        vocab = set(feed_vocabulary(FEED).values())
+        expected = {FEED / 3.0, FEED * 0.9, FEED}
         feeds = {m.feed for m in tp.moves if m.move_type is MoveType.LINEAR}
-        assert feeds <= vocab
-        # All three arms are exercised on this plate.
-        assert feeds == vocab
+        # All three arms are exercised on this plate, and no fourth value.
+        assert feeds == expected
 
     def test_simulation_cuts_the_stock(self, tmp_path):
         _, stock, tp = toolpath_from_stl(tmp_path)
@@ -194,11 +195,31 @@ class TestF1EndToEnd:
             if token.startswith("F")
             and token[1:].replace(".", "", 1).replace("-", "", 1).isdigit()
         }
-        expected = {round(value, 1) for value in feed_vocabulary(FEED).values()}
+        expected = {333.3, 900.0, 1000.0}  # R8 triplet at feed 1000, .1f post
         assert f_words == expected
         assert len(f_words) == 3
 
     def test_rapids_are_posted_without_a_feed_word(self, tmp_path):
+        """G00 blocks carry no F word; G01 blocks do.
+
+        post/fanuc.py emits ``f" F{seg.feed:.1f}"`` only on a LINEAR move and
+        only when the feed changed, so a rapid must never carry one.
+        """
         _, _, tp = toolpath_from_stl(tmp_path)
         assert any(m.move_type is MoveType.RAPID for m in tp.moves)
-        assert all(m.feed == 0.0 for m in tp.moves if m.move_type is MoveType.RAPID)
+        gcode = FanucRenderer().render(segments_to_ir(tp))
+
+        rapid_lines = [ln for ln in gcode.splitlines() if ln.startswith("G00")]
+        feed_lines = [ln for ln in gcode.splitlines() if ln.startswith("G01")]
+        assert rapid_lines and feed_lines
+
+        def carries_feed_word(line: str) -> bool:
+            return any(
+                token.startswith("F")
+                and token[1:].replace(".", "", 1).isdigit()
+                for token in line.split()
+            )
+
+        for line in rapid_lines:
+            assert not carries_feed_word(line), f"rapid block has a feed: {line}"
+        assert any(carries_feed_word(line) for line in feed_lines)

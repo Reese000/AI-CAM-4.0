@@ -21,6 +21,7 @@ import pytest
 
 from kernel.strategies import get_strategy, list_strategies
 from kernel.strategies.adaptive_engagement import (
+    AE_TOLERANCE_MM,
     DEFAULT_ENGAGEMENT_GATE,
     AdaptiveEngagementStrategy,
     feed_vocabulary,
@@ -132,7 +133,17 @@ class TestSelectFeedGate:
     def test_the_gate_boundary_is_inclusive(self):
         boundary = DEFAULT_ENGAGEMENT_GATE * TOOL_DIAMETER
         assert select_feed(boundary, TOOL_DIAMETER, FEED) == pytest.approx(FEED * 0.9)
-        assert select_feed(boundary - 1e-9, TOOL_DIAMETER, FEED) == pytest.approx(FEED)
+        # The inclusive zone is exactly AE_TOLERANCE_MM wide (float slack for
+        # the accumulated inset subtraction) - inside it: reduced...
+        assert (
+            select_feed(boundary - 0.5 * AE_TOLERANCE_MM, TOOL_DIAMETER, FEED)
+            == pytest.approx(FEED * 0.9)
+        )
+        # ...and clearly below it the cut is back on the cutting arm.
+        assert (
+            select_feed(boundary - 10 * AE_TOLERANCE_MM, TOOL_DIAMETER, FEED)
+            == pytest.approx(FEED)
+        )
 
     def test_a_plunge_is_priced_at_feed_over_three_regardless_of_engagement(self):
         assert select_feed(
@@ -278,7 +289,6 @@ class TestGeneratedToolpath:
     def test_every_cutting_move_carries_a_measured_feed(self):
         vocab = feed_vocabulary(FEED)
         tp = run_toolpath()
-        assert cutting_feeds(tp) <= set(vocab.values())
         assert cutting_feeds(tp) == set(vocab.values())
 
     def test_rapids_carry_no_feed(self):
@@ -289,19 +299,35 @@ class TestGeneratedToolpath:
 
     def test_one_plunge_per_level_priced_at_feed_over_three(self):
         tp = run_toolpath()
-        levels = tp.params["levels"]
+        # Fixture geometry pinned here, not read back from the module: a
+        # 120 x 80 x 12 mm plate, top Z0, bottom Z-12, stepdown 3 -> exactly
+        # four cutting levels at -3 / -6 / -9 / -12.
+        assert tp.params["levels"] == 4
+        assert sorted(
+            {m.end.z for m in tp.moves if m.move_type is MoveType.LINEAR}
+        ) == [-12.0, -9.0, -6.0, -3.0]
         histogram = tp.params["feed_histogram"]
         plunge_key = f"{FEED / 3.0:.6f}"
-        assert histogram[plunge_key] == levels
+        assert histogram[plunge_key] == 4
 
-    def test_each_levels_first_ring_takes_the_reduced_arm(self):
-        """The fresh full-diameter slot is the only ae >= gate * D by design."""
+    def test_every_ring_contributes_exactly_one_slot_class_cut(self):
+        """Ring 0's slot line + one outward corner step per later ring.
+
+        Both are full-diameter (virgin-material) cuts, so both land on the
+        reduced arm; the four side runs of each ring land on the cutting arm.
+        """
         tp = run_toolpath()
         levels = tp.params["levels"]
+        rings = tp.params["rings_per_level"]
         histogram = tp.params["feed_histogram"]
-        assert histogram[f"{FEED * 0.9:.6f}"] == levels
-        # ...and the constant-engagement rings take the cutting arm.
-        assert histogram[f"{FEED:.6f}"] > 0
+        reduced = int(histogram[f"{FEED * 0.9:.6f}"])
+        plunge = int(histogram[f"{FEED / 3.0:.6f}"])
+        cutting = int(histogram[f"{FEED:.6f}"])
+        linear = sum(int(v) for v in histogram.values())
+        assert reduced == levels * rings
+        assert plunge == levels
+        assert cutting == linear - reduced - plunge
+        assert cutting > 0
 
     def test_histogram_partitions_the_cutting_moves(self):
         tp = run_toolpath()
@@ -314,9 +340,12 @@ class TestGeneratedToolpath:
 
     def test_params_expose_the_vocabulary_and_the_gate(self):
         tp = run_toolpath()
-        vocab = feed_vocabulary(FEED)
+        # Literals from adaptive.md R8 at feed = 1000, not a call back into the
+        # module under test.
         assert tp.params["feed_vocabulary"] == {
-            key: round(value, 6) for key, value in vocab.items()
+            "plunge": 333.333333,
+            "reduced": 900.0,
+            "cutting": 1000.0,
         }
         assert tp.params["engagement_gate"] == DEFAULT_ENGAGEMENT_GATE
         assert tp.params["gate_mm"] == pytest.approx(
@@ -351,3 +380,100 @@ class TestGeneratedToolpath:
         )
         assert tp.moves == []
         assert "error" in tp.params
+
+    def test_generate_toolpath_enforces_the_same_contract_as_run(self):
+        """A direct call is rejected the way run() would reject it."""
+        strategy = AdaptiveEngagementStrategy()
+        good = dict(stepover=0.4, stepdown=3.0, feed_rate=FEED)
+
+        bad_gate = strategy.generate_toolpath(
+            make_stock(),
+            ToolDef(diameter=TOOL_DIAMETER),
+            engagement_gate=2.0,
+            **good,
+        )
+        assert bad_gate.moves == []
+        assert "engagement_gate" in bad_gate.params["error"]
+
+        bad_feed = strategy.generate_toolpath(
+            make_stock(),
+            ToolDef(diameter=TOOL_DIAMETER),
+            feed_rate=0.0,
+            stepover=0.4,
+            stepdown=3.0,
+        )
+        assert bad_feed.moves == []
+        assert "feed_rate" in bad_feed.params["error"]
+
+        bad_gate_type = strategy.generate_toolpath(
+            make_stock(),
+            ToolDef(diameter=TOOL_DIAMETER),
+            engagement_gate="fast",
+            **good,
+        )
+        assert bad_gate_type.moves == []
+        assert "engagement_gate" in bad_gate_type.params["error"]
+
+    def test_extra_args_stepover_is_validated_before_it_is_used(self):
+        """run() merges extra_args over the field, so validation must too."""
+        operation = make_operation(stepover=0.9)  # lands in extra_args
+        assert operation.stepover == 0.4  # the field itself is still legal
+        with pytest.raises(ValueError) as excinfo:
+            AdaptiveEngagementStrategy().run(operation)
+        assert "Stepover" in str(excinfo.value)
+
+    def test_square_footprint_still_prices_a_slot_class_cut(self):
+        """Ring 0 degenerates to a point when half_x == half_y.
+
+        The plunge clears disc(R) there and ring 1's outward step from the
+        centre is the virgin-material cut, so the reduced arm must still be
+        used (regression guard: it used to be priced as a band cut, which
+        left a square stock with a histogram of only two arms).
+        """
+        square = BBox(min=Vec3(-50.0, -50.0, -12.0), max=Vec3(50.0, 50.0, 0.0))
+        operation = OperationParams(
+            strategy="adaptive_engagement",
+            stock=square,
+            tool=ToolDef(diameter=TOOL_DIAMETER),
+            stepover=0.4,
+            stepdown=3.0,
+            feed_rate=FEED,
+            spindle_speed=8000.0,
+            clearance_height=5.0,
+            top_of_stock=0.0,
+            bottom_of_stock=-12.0,
+        )
+        tp = AdaptiveEngagementStrategy().run(operation)
+
+        histogram = tp.params["feed_histogram"]
+        reduced = int(histogram[f"{FEED * 0.9:.6f}"])
+        levels = tp.params["levels"]
+        rings = tp.params["rings_per_level"]
+        assert reduced == levels * (rings - 1)  # ring 0 contributes no cut
+        assert reduced > 0, "square footprint never used the reduced arm"
+        assert tp.params["engagement_max_mm"] == pytest.approx(TOOL_DIAMETER)
+
+    def test_stepover_equal_to_the_gate_is_deterministic(self):
+        """stepover == engagement_gate == 0.5 sits exactly on the boundary.
+
+        Every side run then has ``band == 0.5 * D == gate * D`` and must land
+        on the reduced arm through the documented inclusive rule, not through
+        the last bit of the accumulated inset subtraction (the
+        AE_TOLERANCE_MM contract).  The single exception is the OUTERMOST
+        ring: its band stops short of the boundary (the inset chain clamps at
+        the tool radius), so its four side runs stay on the cutting arm.
+        """
+        tp = run_toolpath(stepover=0.5)
+        histogram = tp.params["feed_histogram"]
+        levels = tp.params["levels"]
+        rings = tp.params["rings_per_level"]
+
+        reduced = int(histogram[f"{FEED * 0.9:.6f}"])
+        cutting = int(histogram[f"{FEED:.6f}"])
+
+        # slot-class: ring 0's slot line + one outward step per later ring,
+        # plus every on-the-gate side run except the outermost ring's four.
+        assert reduced == levels * rings + levels * 4 * (rings - 2)
+        # only the outermost ring's short band stays below the gate
+        assert cutting == levels * 4
+        assert cutting_feeds(tp) <= set(feed_vocabulary(FEED).values())
