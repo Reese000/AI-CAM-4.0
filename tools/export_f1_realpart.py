@@ -77,6 +77,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import re
 import sys
 import time
 from collections import Counter
@@ -119,6 +120,16 @@ SIM_RESOLUTION_MM = 2.0
 # integration tests) — a program missing one of these is not exportable.
 MANDATORY_BLOCKS = ("O0001", "M06", "M03", "M30", "G21", "G90")
 
+# Minimal G-code text reader used by find_rapid_clearance_violations.
+# The value group accepts an explicit sign (a post that writes `Z+5.0` must
+# not slip through the reader — review round 2, OBS 13); two groups are
+# required because findall() yields (letter, value) tuples.
+_GCODE_WORD_RE = re.compile(r"([A-Za-z])([-+]?\d*\.?\d+)")
+_N_PREFIX_RE = re.compile(r"^N\d+\s*")
+_PAREN_COMMENT_RE = re.compile(r"\([^)]*\)")
+_SEMI_COMMENT_RE = re.compile(r";.*$")
+_MOTION_G = {"G0", "G1", "G2", "G3"}
+
 
 class ExportError(RuntimeError):
     """A pipeline stage failed; the CLI reports it and exits non-zero."""
@@ -131,9 +142,14 @@ def find_rapid_clearance_violations(
 
     ``OperationParams.clearance_height`` is an absolute Z plane, so a caller
     that passes a bare ``5.0`` for a part whose stock top is at 53.345 gets
-    link rapids *inside* the stock.  This is the export-time guard: modal Z
-    is tracked across blocks (``parse_gcode``), so a ``G00 X.. Y..`` block
-    without its own Z word is judged by the Z in effect.
+    link rapids *inside* the stock.  This is the export-time guard.
+
+    It reads the **raw text with its own modal-state reader** (motion mode
+    G0-vs-G1/G2/G3, plus current Z) rather than ``kernel.gcode.parse_gcode``,
+    because that parser only accepts G/M-leading blocks: a Haas-style modal
+    continuation rapid (``X20. Y10.`` with the mode still G0) would be
+    invisible to it.  Blind-spot quantified for counting in the P5/6 diff
+    summary §4; the guard must not inherit it (review round 1, OBS 9).
 
     Z-only rapids are deliberately not judged: F1's ``_rapid(entry, z_prev)``
     (adaptive_engagement.py:440) lands on the previously cleared level
@@ -141,23 +157,65 @@ def find_rapid_clearance_violations(
     """
     violations: list[str] = []
     modal_z: float | None = None
-    for cmd in parse_gcode(text):
-        if "Z" in cmd.params:
-            modal_z = cmd.params["Z"]
-        if cmd.command != "G0":
+    rapid_mode = False  # motion mode in effect; True == G0
+
+    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+        line = raw_line.strip()
+        if not line:
             continue
-        if "X" not in cmd.params and "Y" not in cmd.params:
+        line = _PAREN_COMMENT_RE.sub(" ", line)
+        line = _SEMI_COMMENT_RE.sub(" ", line).strip()
+        if not line:
+            continue
+        line = _N_PREFIX_RE.sub("", line).strip()
+        if not line:
+            continue
+
+        words = _GCODE_WORD_RE.findall(line)
+        if not words:
+            continue
+        letters = [w[0].upper() for w in words]
+        values = [(w[0].upper(), w[1]) for w in words]
+
+        # A motion G word on this line sets the mode; a non-motion G word
+        # (G17/G53/...) leaves it alone; no G word at all = modal continue.
+        for letter, value in values:
+            if letter != "G":
+                continue
+            try:
+                g_code = "G" + str(int(float(value)))
+            except ValueError:
+                continue
+            if g_code in _MOTION_G:
+                rapid_mode = g_code == "G0"
+                break
+
+        # current Z: the line's own Z word wins, else the modal one
+        z_here: float | None = None
+        for letter, value in values:
+            if letter == "Z":
+                try:
+                    z_here = float(value)
+                except ValueError:
+                    continue
+        if z_here is not None:
+            modal_z = z_here
+        effective_z = z_here if z_here is not None else modal_z
+
+        if not rapid_mode:
+            continue
+        if "X" not in letters and "Y" not in letters:
             continue  # Z-only rapid: lands on the cleared level, not a traverse
-        z_here = cmd.params.get("Z", modal_z)
-        if z_here is None:
+
+        if effective_z is None:
             violations.append(
-                f"line {cmd.line_number}: XY rapid with unknown Z: "
-                f"{cmd.raw.strip()!r}"
+                f"line {line_number}: XY rapid with unknown Z: "
+                f"{raw_line.strip()!r}"
             )
-        elif z_here < stock_top - eps:
+        elif effective_z < stock_top - eps:
             violations.append(
-                f"line {cmd.line_number}: XY rapid at Z{z_here:g} below "
-                f"stock top Z{stock_top:g}: {cmd.raw.strip()!r}"
+                f"line {line_number}: XY rapid at Z{effective_z:g} below "
+                f"stock top Z{stock_top:g}: {raw_line.strip()!r}"
             )
     return violations
 

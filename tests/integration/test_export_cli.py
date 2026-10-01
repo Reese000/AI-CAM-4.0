@@ -174,3 +174,23 @@ class TestExportPath:
         violations = find_rapid_clearance_violations(bad, stock_top=12.0)
         assert len(violations) == 2, violations
         assert "below stock top" in violations[0]
+
+    def test_clearance_guard_catches_a_modal_rapid(self):
+        """Round-2 hardening: a rapid with no G word of its own is judged too.
+
+        ``kernel.gcode.parse_gcode`` skips G/M-less lines, so the round-1
+        (parse-based) guard was blind to exactly this shape — a modal
+        continuation while the motion mode is still G0, at a stale modal Z.
+        The guard now reads the raw text with its own modal-state reader.
+        """
+        program = (
+            "G21\n"
+            "G00 X10.000 Y10.000 Z17.000\n"  # rapid above the stock top 12.0
+            "G00 Z5.000\n"                   # Z-only rapid: deliberately skipped
+            "X20.000 Y10.000\n"              # modal G0 continuation at Z5 -> violation
+            "G01 Z1.000 F1000.0\n"           # feed mode; sets modal Z1
+            "M30\n"
+        )
+        violations = find_rapid_clearance_violations(program, stock_top=12.0)
+        assert len(violations) == 1, violations
+        assert "below stock top" in violations[0]
