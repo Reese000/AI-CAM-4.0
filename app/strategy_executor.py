@@ -124,7 +124,7 @@ STRATEGY_PARAMS: dict[str, dict[str, Any]] = {
     # selector and ``execute()`` carries a hole table yet and the default
     # path has to plan moves.  Pass ``holes=`` to drill a real table.
     "drilling": {
-        "holes": {"type": "object", "default": None, "nullable": True, "label": "Hole Table ([x, y, top_z, bottom_z, diameter] rows; blank = 3×3 demo grid)"},
+        "holes": {"type": "object", "default": None, "nullable": True, "label": "Hole Table ([x, y, top_z, bottom_z, diameter] rows or dicts; blank = 3×3 demo grid)"},
         "cycle_type": {"type": "choice", "default": "drilling", "choices": list(MEASURED_CYCLE_TYPES), "label": "Cycle Type (measured vocabulary only)"},
         "pecking_depth": {"type": "float", "default": None, "nullable": True, "min": 0.01, "max": 50.0, "label": "Peck Depth (mm; chip-breaking / deep-drilling only; blank = 0.25 × D)"},
         "retract_height_offset": {"type": "float", "default": 5.0, "min": 0.0, "max": 50.0, "label": "Retract Plane (mm above stock top)"},
