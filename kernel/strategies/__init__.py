@@ -14,6 +14,7 @@ from kernel.strategies.face_milling import FaceMillingStrategy
 from kernel.strategies.adaptive_clearing import AdaptiveClearingStrategy
 from kernel.strategies.adaptive_engagement import AdaptiveEngagementStrategy
 from kernel.strategies.pocketing import PocketingStrategy
+from kernel.strategies.waterline_finishing import WaterlineFinishingStrategy
 
 # Strategy registry — maps name to class
 _STRATEGIES: dict[str, type[BaseStrategy]] = {
@@ -21,6 +22,7 @@ _STRATEGIES: dict[str, type[BaseStrategy]] = {
     "adaptive_clearing": AdaptiveClearingStrategy,
     "adaptive_engagement": AdaptiveEngagementStrategy,
     "pocketing": PocketingStrategy,
+    "waterline_finishing": WaterlineFinishingStrategy,
 }
 
 
