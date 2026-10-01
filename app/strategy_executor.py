@@ -5,13 +5,21 @@ Takes user parameters from the UI, invokes the corresponding kernel
 strategy, and returns a canonical ToolpathData (NOT wrapped).
 
 The executor owns no Qt state. It's a pure function from params → ToolpathData.
+
+Two of the strategies are dispatched to real kernel strategies — F1
+``adaptive_engagement`` and F2 ``waterline_finishing``, the two P5 features —
+so the app layer and the kernel cannot drift apart on them.  The other five
+(``face_milling``, ``adaptive_clearing``, ``pocketing``, ``contour``,
+``drilling``) are the legacy app-local planners this module has always had.
 """
 
 from __future__ import annotations
 
 import logging
+import math
 from typing import Any
 
+from kernel.strategies import get_strategy
 from kernel.types import (
     BBox,
     Material,
@@ -40,10 +48,43 @@ STRATEGY_PARAMS: dict[str, dict[str, Any]] = {
         "step_down": {"type": "float", "default": 3.0, "min": 0.1, "max": 20.0, "label": "Step Down (mm)"},
         "tolerance": {"type": "float", "default": 0.05, "min": 0.01, "max": 1.0, "label": "Tolerance (mm)"},
     },
+    # F1 (P5/3) — kernel-backed: dispatch translates the app's mm step_over
+    # into the kernel's stepover-as-a-fraction-of-D, see _adaptive_engagement.
+    # step_over's DEFAULT assumes a cutter of D >= 8 mm (the GUI's is 10 mm).
+    # On a smaller tool the default is more than 0.5 x D, so execute() refuses
+    # it and names the ceiling in mm instead of cutting at an unrequested chip
+    # load — the schema's min/max is a UI range, not a promise that every
+    # value validates for every tool.
+    "adaptive_engagement": {
+        "step_over": {"type": "float", "default": 4.0, "min": 0.1, "max": 50.0, "label": "Step Over (mm, ≤ 0.5×D)"},
+        "step_down": {"type": "float", "default": 2.0, "min": 0.1, "max": 20.0, "label": "Step Down (mm)"},
+        "engagement_gate": {"type": "float", "default": 0.5, "min": 0.01, "max": 1.0, "label": "Engagement Gate (×D)"},
+        "feed_rate": {"type": "float", "default": 1000.0, "min": 1.0, "max": 5000.0, "label": "Feed Rate (mm/min)"},
+    },
     "pocketing": {
         "step_over": {"type": "float", "default": 6.0, "min": 0.1, "max": 40.0, "label": "Step Over (mm)"},
         "step_down": {"type": "float", "default": 2.0, "min": 0.1, "max": 20.0, "label": "Step Down (mm)"},
         "finish_allowance": {"type": "float", "default": 0.3, "min": 0.0, "max": 5.0, "label": "Finish Allowance (mm)"},
+    },
+    # F2 (P5/4) — kernel-backed, see _waterline_finishing.
+    #
+    # cell_mm: the kernel's reference pitch is 0.05 mm, but on a 100 mm
+    # square part that needs a 2408 x 2408 section raster (5.8M cells) and
+    # the kernel refuses it (MAX_RASTER_CELLS = 4_000_000).  0.25 mm plans
+    # the same part inside the budget; tighten it towards 0.05 mm on small
+    # parts, loosen it on parts several hundred mm across — the app has no
+    # parameter panel yet, so a stock too big for the default comes back
+    # as a ValueError telling the caller which way to move.
+    "waterline_finishing": {
+        "finish_mode": {"type": "choice", "default": "both", "choices": ["waterline", "scallop", "both"], "label": "Finish Mode"},
+        "cell_mm": {"type": "float", "default": 0.25, "min": 0.01, "max": 5.0, "label": "Raster Cell (mm; raise for large stock)"},
+        "cusp_height_mm": {"type": "float", "default": 0.02, "min": 0.001, "max": 5.0, "label": "Cusp Height (mm)"},
+        "scallop_rings": {"type": "int", "default": None, "nullable": True, "min": 1, "max": 256, "label": "Scallop Rings (blank = derive from footprint)"},
+        "stock_to_leave_mm": {"type": "float", "default": 0.0, "min": 0.0, "max": 10.0, "label": "Stock to Leave (mm)"},
+        "step_down": {"type": "float", "default": 1.0, "min": 0.01, "max": 20.0, "label": "Step Down (mm)"},
+        "feed_rate": {"type": "float", "default": 1000.0, "min": 1.0, "max": 5000.0, "label": "Feed Rate (mm/min)"},
+        "profile": {"type": "object", "default": None, "nullable": True, "label": "Profile ([x, y] polygon; blank = stock footprint)"},
+        "mesh": {"type": "object", "default": None, "nullable": True, "label": "Mesh (parse_stl dict; blank = stock footprint)"},
     },
     "contour": {
         "step_down": {"type": "float", "default": 1.0, "min": 0.1, "max": 10.0, "label": "Step Down (mm)"},
@@ -73,6 +114,23 @@ def get_strategy_params(strategy_name: str) -> dict[str, Any]:
 # Strategy executor — pure function, no Qt
 # ---------------------------------------------------------------------------
 
+def _diagnostics(reported: dict[str, Any]) -> dict[str, Any]:
+    """Kernel diagnostics in a form worth putting on one log line.
+
+    ``feed_histogram`` can carry hundreds of one-feed-each bins; its digest
+    (how many bins, how many moves) is what a reader needs, and it keeps the
+    histogram — which ``execute()`` does not copy into the returned
+    ``ToolpathData`` — on record somewhere.
+    """
+    out: dict[str, Any] = {}
+    for key, value in reported.items():
+        if key == "feed_histogram" and isinstance(value, dict):
+            out[key] = f"{len(value)} bins / {sum(value.values())} moves"
+        else:
+            out[key] = value
+    return out
+
+
 class StrategyExecutor:
     """
     Bridge between UI parameters and toolpath generation.
@@ -99,6 +157,12 @@ class StrategyExecutor:
         Generate a toolpath for the given strategy and parameters.
 
         Returns a canonical ToolpathData — NOT wrapped in any UI type.
+        ``params`` on the result is the VALIDATED APP parameter dict (what
+        the caller asked for), not the kernel strategy's diagnostics — those
+        (``profile_source``, ``passes``, achieved cusp height, the feed
+        histogram as a bin/move digest, …) are written to the module log by
+        ``_kernel_moves`` instead.  Kernel-backed strategies are invoked
+        here; the five legacy app-local planners return their own moves.
         """
         params = params or {}
 
@@ -118,7 +182,9 @@ class StrategyExecutor:
         dispatch = {
             "face_milling": self._face_milling,
             "adaptive_clearing": self._adaptive_clearing,
+            "adaptive_engagement": self._adaptive_engagement,
             "pocketing": self._pocketing,
+            "waterline_finishing": self._waterline_finishing,
             "contour": self._contour,
             "drilling": self._drilling,
         }
@@ -149,12 +215,72 @@ class StrategyExecutor:
     def _validate_params(
         self, strategy: str, params: dict[str, Any]
     ) -> dict[str, Any]:
-        """Merge user params with defaults, enforcing min/max."""
+        """Merge user params with defaults, enforcing each schema spec.
+
+        ``float`` specs are clamped to their ``min``/``max`` and ``int``
+        specs likewise — the behaviour the legacy strategies have always
+        had — except that an ``int`` spec REFUSES a non-integral value
+        instead of truncating it, because the kernel strategy rejects a
+        fractional ring count too and one parameter must keep one contract.
+        ``choice`` specs must match one of their ``choices``; ``object`` specs
+        are passed through untouched because there is no numeric range to
+        clamp them to — the kernel strategy owns their validation.  A spec
+        marked ``nullable`` may stay ``None`` (used by ``scallop_rings``,
+        ``profile`` and ``mesh``, which all mean "derive it" when blank).
+
+        A key in ``params`` that the schema does not know is logged as a
+        warning and dropped: swallowing ``stepdown`` (the kernel's spelling
+        of ``step_down``) in silence would plan at a default with no trace
+        that the caller ever asked for something else.
+        """
         schema = STRATEGY_PARAMS.get(strategy, {})
+        if schema:
+            # A typo'd key would otherwise be dropped on the floor and the
+            # kernel would fall back to a default that may equal the app's —
+            # silent, and indistinguishable from a correct run.
+            unknown = sorted(set(params) - set(schema))
+            if unknown:
+                logger.warning(
+                    "%s: ignoring parameter(s) outside its schema: %s "
+                    "(known: %s)",
+                    strategy, unknown, sorted(schema),
+                )
         result: dict[str, Any] = {}
         for key, spec in schema.items():
             value = params.get(key, spec["default"])
-            value = max(spec["min"], min(spec["max"], value))
+            if value is None:
+                if spec.get("nullable"):
+                    result[key] = None
+                    continue
+                raise ValueError(
+                    f"{strategy}.{key} must not be None "
+                    f"(default {spec['default']!r})"
+                )
+            kind = spec.get("type", "float")
+            if kind == "float":
+                value = max(spec["min"], min(spec["max"], value))
+            elif kind == "int":
+                # Reject rather than truncate: the kernel strategy refuses a
+                # fractional ring count outright, and two validators giving
+                # two answers for one parameter is worse than either alone.
+                as_float = float("nan")
+                try:
+                    as_float = float(value)
+                    integral = math.isfinite(as_float) and int(as_float) == as_float
+                except (TypeError, ValueError, OverflowError):
+                    integral = False
+                if not integral:
+                    raise ValueError(
+                        f"{strategy}.{key} must be an integer, got {value!r}"
+                    )
+                value = int(max(spec["min"], min(spec["max"], int(as_float))))
+            elif kind == "choice":
+                if value not in spec["choices"]:
+                    raise ValueError(
+                        f"{strategy}.{key} must be one of "
+                        f"{list(spec['choices'])}, got {value!r}"
+                    )
+            # "object" specs fall through unclamped on purpose.
             result[key] = value
         return result
 
@@ -336,6 +462,92 @@ class StrategyExecutor:
         return moves
 
     # ------------------------------------------------------------------
+    # Adaptive engagement (F1) — kernel-backed
+    # ------------------------------------------------------------------
+
+    def _adaptive_engagement(
+        self, tool: ToolDef, bbox: BBox, params: dict[str, Any]
+    ) -> list[Move]:
+        """Run the kernel's F1 strategy.
+
+        The app speaks ``step_over`` in mm (like every other strategy in
+        this file); the kernel's ``stepover`` is a fraction of the tool
+        diameter and must land in (0, 0.5] — the bound mirrored below from
+        ``kernel.strategies.adaptive_engagement``.  The translation happens
+        here and an out-of-range result is refused rather than silently
+        clamped: halving the stepover halves the chip load, which is a
+        tooling decision, not a UI nicety.
+
+        The diameter is checked before the division so a degenerate
+        ``ToolDef`` reaches the caller as this module's uniform
+        ``ValueError`` instead of a ``ZeroDivisionError``.
+        """
+        if not math.isfinite(tool.diameter) or tool.diameter <= 0:
+            raise ValueError(
+                f"adaptive_engagement: tool diameter must be a positive "
+                f"finite number, got {tool.diameter!r}"
+            )
+        step_over = params["step_over"]
+        fraction = step_over / tool.diameter
+        if not 0.0 < fraction <= 0.5:
+            raise ValueError(
+                f"adaptive_engagement step_over {step_over:g} mm is "
+                f"{fraction:.4g} × D for a {tool.diameter:g} mm tool; it must "
+                f"be ≤ 0.5 × D, i.e. ≤ {0.5 * tool.diameter:g} mm"
+            )
+        return self._kernel_moves(
+            "adaptive_engagement",
+            tool,
+            bbox,
+            stepover=fraction,
+            stepdown=params["step_down"],
+            feed_rate=params["feed_rate"],
+            engagement_gate=params["engagement_gate"],
+        )
+
+    # ------------------------------------------------------------------
+    # Shared kernel dispatch
+    # ------------------------------------------------------------------
+
+    def _kernel_moves(
+        self, strategy_name: str, tool: ToolDef, bbox: BBox, **kwargs: Any
+    ) -> list[Move]:
+        """Run a kernel strategy over ``bbox`` and hand back its moves.
+
+        ``execute()``'s contract only carries a stock bounding box, so the
+        stock faces are supplied here.  ``waterline_finishing`` would
+        otherwise fall back to its own ``top_of_stock = 0.0`` /
+        ``bottom_of_stock = -10.0`` defaults — a different z range from the
+        stock on screen — and finish the wrong slice of material.
+
+        A kernel strategy reports a rejected parameter set as an error
+        ``ToolpathData`` (empty ``moves``, message in ``params['error']``)
+        instead of raising.  Turning that into a ``ValueError`` keeps the
+        executor's failure mode uniform: the GUI already surfaces a raised
+        exception in a dialog, whereas an empty toolpath would look like a
+        successful no-op cut.
+        """
+        strategy = get_strategy(strategy_name)
+        toolpath = strategy.generate_toolpath(
+            bbox,
+            tool,
+            top_of_stock=bbox.max.z,
+            bottom_of_stock=bbox.min.z,
+            **kwargs,
+        )
+        reported = toolpath.params or {}
+        error = reported.get("error")
+        if error:
+            raise ValueError(f"{strategy_name}: {error}")
+        logger.info(
+            "Kernel strategy '%s' returned %d moves (kernel params: %s)",
+            strategy_name,
+            len(toolpath.moves),
+            _diagnostics(reported),
+        )
+        return toolpath.moves
+
+    # ------------------------------------------------------------------
     # Pocketing — offset-based pocket clearing
     # ------------------------------------------------------------------
 
@@ -409,6 +621,36 @@ class StrategyExecutor:
         ))
 
         return moves
+
+    # ------------------------------------------------------------------
+    # Waterline finishing (F2) — kernel-backed
+    # ------------------------------------------------------------------
+
+    def _waterline_finishing(
+        self, tool: ToolDef, bbox: BBox, params: dict[str, Any]
+    ) -> list[Move]:
+        """Run the kernel's F2 waterline + constant-scallop strategy.
+
+        ``profile`` / ``mesh`` are passed straight through: ``None`` (the
+        default) makes the kernel finish the stock footprint, a ``profile``
+        polygon finishes that outline, and a ``mesh`` finishes the sectioned
+        model.  Giving the kernel both at once is its own error and surfaces
+        here as a ``ValueError``.
+        """
+        return self._kernel_moves(
+            "waterline_finishing",
+            tool,
+            bbox,
+            finish_mode=params["finish_mode"],
+            cell_mm=params["cell_mm"],
+            cusp_height_mm=params["cusp_height_mm"],
+            scallop_rings=params["scallop_rings"],
+            stock_to_leave_mm=params["stock_to_leave_mm"],
+            stepdown=params["step_down"],
+            feed_rate=params["feed_rate"],
+            profile=params["profile"],
+            mesh=params["mesh"],
+        )
 
     # ------------------------------------------------------------------
     # Contour — follow the profile at each depth level
