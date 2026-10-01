@@ -885,6 +885,88 @@ class TestMeshSections:
                        and 15.0 < p[1] < 25.0]
         assert inside_boss == [], f"contour ran through the boss: {inside_boss[:3]}"
 
+    def test_scallop_rings_at_a_step_plane_start_at_the_boss_wall(self):
+        """The scallop path consumes the same section rule as the waterline.
+
+        Plate ``0..60 x 0..40 z 0..4`` with boss ``20..40 x 15..25 z 4..8``,
+        rings pinned onto the step plane with ``scallop_z = 4.0``.  What
+        starts at 4 is the BOSS, so the first ring hugs the boss wall and the
+        rings walk outward over the plate's top floor.  Under round 2's union
+        rule the section would be the plate outline, the first ring would sit
+        outside the PLATE and the floor around the boss would never be
+        ringed - so this pins the round-3 rule where review round 2 found it
+        unprotected (it was pinned on the waterline path only).
+        """
+        mesh = merge_meshes(box_mesh((0.0, 0.0, 0.0), (60.0, 40.0, 4.0)),
+                            box_mesh((20.0, 15.0, 4.0), (40.0, 25.0, 8.0)))
+        stock = rect_stock(0.0, 0.0, 60.0, 40.0, 0.0, 8.0)
+        op = operation(mesh=mesh, finish_levels=[8.0, 4.0, 0.0],
+                       finish_mode="scallop", scallop_z=4.0, scallop_rings=3,
+                       _top=8.0, _bottom=0.0, _stock=stock)
+        op.extra_args.pop("profile")
+        tp = get_strategy("waterline_finishing").run(op)
+        assert "error" not in tp.params
+        assert tp.params["profile_source"] == "mesh"
+        assert tp.params["scallop_rings"] == 3
+        cuts = [(m.end.x, m.end.y) for m in tp.moves
+                if m.move_type is MoveType.LINEAR]
+        assert cuts, "no ring was emitted at all"
+        xs = [p[0] for p in cuts]
+        ys = [p[1] for p in cuts]
+        # Rings are the boss outline offset by R, R+p, R+2p, so the OUTERMOST
+        # one owns every extreme: 20 - (R + 2p) … 40 + (R + 2p).  The union
+        # rule would put the whole ring family around the PLATE instead
+        # (-(R + 2p) … 60 + (R + 2p)), which is what this catches.
+        p = wlf.stepover_for_cusp(wlf.DEFAULT_CUSP_HEIGHT_MM, R)
+        outer = R + 2.0 * p
+        assert min(xs) == pytest.approx(20.0 - outer, abs=ANALYTIC_DEV)
+        assert max(xs) == pytest.approx(40.0 + outer, abs=ANALYTIC_DEV)
+        assert min(ys) == pytest.approx(15.0 - outer, abs=ANALYTIC_DEV)
+        assert max(ys) == pytest.approx(25.0 + outer, abs=ANALYTIC_DEV)
+        assert tp.params["loops"] == 3       # one closed loop per ring
+        # No ring point may stand closer than R to the boss wall.
+        assert [q for q in cuts
+                if signed_dist_rect(q[0], q[1], 20.0, 15.0, 40.0, 25.0)
+                < R - ANALYTIC_DEV] == []
+
+    def test_the_ring_count_is_measured_at_the_height_the_rings_are_cut(self):
+        """Count and cut must read the SAME section (review round-2 MINOR).
+
+        ``plan_finishes`` cuts the rings at ``scallop_z`` when the caller
+        pins it, but derived the ring count from the section at
+        ``min(z_levels)`` - two different materials on a mesh whenever a
+        feature starts between the two heights.  Fixture: plate
+        ``0..60 x 0..40 z 0..4`` with boss ``10..50 x 8..32 z 4..8``, levels
+        ``[8, 0]`` (the section at 0 is the whole plate, which is also the
+        stock, so its floor reaches nowhere) and ``scallop_z = 4`` (the
+        section is the boss, and the floor the rings must cover reaches the
+        stock corners).  The strategy must report the SECOND count.
+        """
+        mesh = merge_meshes(box_mesh((0.0, 0.0, 0.0), (60.0, 40.0, 4.0)),
+                            box_mesh((10.0, 8.0, 4.0), (50.0, 32.0, 8.0)))
+        stock = rect_stock(0.0, 0.0, 60.0, 40.0, 0.0, 8.0)
+        op = operation(mesh=mesh, finish_levels=[8.0, 0.0],
+                       finish_mode="scallop", scallop_z=4.0, cell_mm=0.25,
+                       _top=8.0, _bottom=0.0, _stock=stock)
+        op.extra_args.pop("profile")
+
+        def count_at(z: float) -> int:
+            regions, _ = wlf.WaterlineFinishingStrategy._material_boundaries(
+                {"mesh": mesh}, stock, z)
+            extent = wlf._max_ring_extent(regions, stock)
+            p = wlf.stepover_for_cusp(wlf.DEFAULT_CUSP_HEIGHT_MM, R)
+            return int((extent - R) // p) + 1 if extent > R else 1
+
+        at_cut = count_at(4.0)
+        at_floor = count_at(0.0)
+        assert at_floor < at_cut, "the fixture must make the two heights differ"
+
+        tp = get_strategy("waterline_finishing").run(op)
+        assert "error" not in tp.params
+        assert tp.params["scallop_rings"] == at_cut
+        assert tp.params["scallop_rings"] != at_floor
+        assert tp.params["moves"] > 0
+
     def test_multi_region_section_rejects_an_erosion(self):
         """Union erosion would need the union's own boundary - declared."""
         outer = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]

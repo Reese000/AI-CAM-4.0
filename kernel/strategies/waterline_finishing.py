@@ -91,6 +91,16 @@ Honest limits (declared, not hidden)
   by the grid extent, not by the stock outline, so a ring that reaches past
   the stock edge is still emitted (the simulation simply removes nothing
   there).
+* Levels do NOT snap to mesh feature heights: ``_finish_levels`` walks a
+  uniform ``stepdown`` ladder, and a mesh wall is a boundary of the section
+  only at heights where material STARTS.  A wall whose base sits between two
+  levels is first traced at the first level ABOVE its base, so the band
+  ``[wall base, that level)`` - up to one full stepdown - can be left uncut
+  at its foot.  Cutting the section of the material in ``[z, z + stepdown)``
+  instead would put the entry plunge through the floor below a boss (the
+  overhang hazard declared above), so this is DECLARED, not patched: it is
+  the standard waterline step-plane limitation, and the reference's
+  ``PrismSolid`` has the same gap at heights that do not land on its ladder.
 * Curved-surface scallop (``Rw``) is not implemented - the reference forbids
   shipping it without a visual check of p.5 of the source PDF, and its
   formulas are marked ``[unverified]`` (``impl/waterline/scallop.py``).
@@ -536,7 +546,8 @@ def section_from_regions(regions, radius: float, cell: float,
     into one grid, even-odd INSIDE each region and OR across regions.  The
     strategy's own paths all return ONE region - ``profile``, ``stock`` and
     (since the round-3 step-plane rule) ``mesh``, which returns the section
-    just above ``z`` - so they take the exact single-region branch above.
+    just above ``z`` (falling back to the section just below when nothing
+    starts there) - so they take the exact single-region branch above.
     The union branch is what a caller gets when it assembles independent
     regions by hand (see ``test_multi_region_section_rejects_an_erosion`` and
     ``test_a_step_plane_union_swallows_the_feature``).
@@ -1215,6 +1226,15 @@ def plan_finishes(
 
     ring_distances: list[float] = []
     p: float | None = None
+    # Where the scallop rings are CUT: the deepest level unless the caller
+    # pins ``scallop_z``.  Resolved ONCE and used for both the ring COUNT
+    # below and the ring SECTION at the end, because on a mesh those are two
+    # different materials as soon as a feature starts between the two heights
+    # (same defect class as review round-2 finding n5, where ``z_levels[-1]``
+    # was read for ``min(z_levels)``: measuring the floor at the deepest level
+    # while cutting at ``scallop_z`` repeats it one level up).
+    scallop_plane = (min(float(v) for v in z_levels)
+                     if scallop_z is None else float(scallop_z))
     if mode in ("scallop", "both"):
         if cusp_height_mm is not None:
             p = stepover_for_cusp(cusp_height_mm, tool_radius)
@@ -1234,9 +1254,11 @@ def plan_finishes(
         if ring_count is None:
             if stock is None:
                 raise ValueError("deriving the ring count needs a stock footprint")
-            # The rings are cut at the DEEPEST level, so the floor they have
-            # to cover is measured there.
-            extent = _max_ring_extent(boundaries_at(min(z_levels)), stock)
+            # The floor the rings have to cover is measured at the height
+            # they are actually CUT (``scallop_plane``), not at the deepest
+            # level: with an explicit ``scallop_z`` the two sections differ
+            # on a mesh.
+            extent = _max_ring_extent(boundaries_at(scallop_plane), stock)
             count = int((extent - first) // p) + 1 if extent > first else 1
             count = max(1, min(MAX_SCALLOP_RINGS, count))
         else:
@@ -1292,11 +1314,9 @@ def plan_finishes(
             passes.append(FinishPass("waterline", float(z), waterline_level,
                                      loops))
     if mode in ("scallop", "both"):
-        floor = min(float(v) for v in z_levels)
-        z = float(floor if scallop_z is None else scallop_z)
-        _, grid = section_and_key(z)
+        _, grid = section_and_key(scallop_plane)
         for d, loops in offset_loops(grid, ring_distances):
-            passes.append(FinishPass("scallop", z, d, loops))
+            passes.append(FinishPass("scallop", scallop_plane, d, loops))
 
     # Deepest last: z descending, so the entry height never has to climb.
     passes.sort(key=lambda fp: -fp.z)
@@ -1798,8 +1818,12 @@ class WaterlineFinishingStrategy(BaseStrategy):
             # A pass at tip height z cuts UPWARD from z, so what it has to
             # finish is the material that STARTS at z.  Take the section just
             # ABOVE the plane; fall back to the section just below it only
-            # when there is nothing above (z is the top of the part, or the
-            # wall of a body whose band is finished by a lower level).
+            # when NOTHING anywhere starts at z - i.e. z at or above the top
+            # of every body.  z strictly above the mesh finds both limits
+            # empty and raises the declared "no cross-section" error; a wall
+            # whose material ENDS at z is not re-added by the fallback (it
+            # only exists where the whole section is empty), because its band
+            # was already cut by the levels below.
             #
             # Two wrong rules came before this one and both are pinned by
             # tests.  Round 1 took the exact-plane even-odd set: on a step
