@@ -6,11 +6,11 @@ strategy, and returns a canonical ToolpathData (NOT wrapped).
 
 The executor owns no Qt state. It's a pure function from params → ToolpathData.
 
-Two of the strategies are dispatched to real kernel strategies — F1
-``adaptive_engagement`` and F2 ``waterline_finishing``, the two P5 features —
-so the app layer and the kernel cannot drift apart on them.  The other five
-(``face_milling``, ``adaptive_clearing``, ``pocketing``, ``contour``,
-``drilling``) are the legacy app-local planners this module has always had.
+Three of the strategies are dispatched to real kernel strategies — F1
+``adaptive_engagement``, F2 ``waterline_finishing`` and F3 ``drilling``, the
+P5 features — so the app layer and the kernel cannot drift apart on them.
+The other four (``face_milling``, ``adaptive_clearing``, ``pocketing``,
+``contour``) are the legacy app-local planners this module has always had.
 """
 
 from __future__ import annotations
@@ -20,6 +20,11 @@ import math
 from typing import Any
 
 from kernel.strategies import get_strategy
+from kernel.strategies.drilling import (
+    MEASURED_CYCLE_TYPES,
+    ORDER_MODES,
+    UNMEASURED_ORDER_MODES,
+)
 from kernel.types import (
     BBox,
     Material,
@@ -90,10 +95,45 @@ STRATEGY_PARAMS: dict[str, dict[str, Any]] = {
         "step_down": {"type": "float", "default": 1.0, "min": 0.1, "max": 10.0, "label": "Step Down (mm)"},
         "tolerance": {"type": "float", "default": 0.02, "min": 0.001, "max": 1.0, "label": "Tolerance (mm)"},
     },
+    # F3 (P5/5) — kernel-backed, see _drilling.
+    #
+    # The legacy trio (peck_depth / retract / dwell) does NOT map onto the
+    # kernel one-for-one, so this schema speaks the kernel's own vocabulary:
+    # the keys DrillingStrategy.generate_toolpath actually accepts, with the
+    # seven CycleConfig fields collected under ``cycle=`` at dispatch (that
+    # is the ONLY place the kernel looks for them).
+    #   * peck_depth -> ``cycle.pecking_depth`` is the one legacy key with
+    #     the same quantity (mm per peck), renamed to the kernel's spelling
+    #     — and live only behind the chip-breaking / deep-drilling cycles
+    #     (CycleConfig.peck_gate_open); on the default 'drilling' cycle it
+    #     is stored but changes nothing, hence the label.
+    #   * retract was the chip-break LIFT after each peck.  The kernel has
+    #     no such knob — its chip-break distance is derived from the tool
+    #     diameter (max(0.02 × D, 0.1 mm)) — so it is dropped, and what the
+    #     panel offers instead is the retract PLANE offset, a different
+    #     quantity (kernel ``retract_height_offset``).
+    #   * dwell -> the kernel's ``dwelling_period_s`` exists but is measured
+    #     DEAD at this capture boundary (kernel/strategies/drilling.py,
+    #     Honest limits #6): a dwell knob would read like a control and do
+    #     nothing, so it is not exposed.
+    # ``holes`` is the geometry input: the kernel performs no feature
+    # recognition (the plan rules it out), so a hole table is the only way
+    # to ask for real holes.  Blank keeps this module's documented default —
+    # the 3×3 demonstration grid the legacy planner drilled, rebuilt as a
+    # hole table in _drilling — because nothing between the strategy
+    # selector and ``execute()`` carries a hole table yet and the default
+    # path has to plan moves.  Pass ``holes=`` to drill a real table.
     "drilling": {
-        "peck_depth": {"type": "float", "default": 5.0, "min": 0.5, "max": 50.0, "label": "Peck Depth (mm)"},
-        "retract": {"type": "float", "default": 2.0, "min": 0.5, "max": 10.0, "label": "Retract (mm)"},
-        "dwell": {"type": "float", "default": 0.5, "min": 0.0, "max": 5.0, "label": "Dwell (s)"},
+        "holes": {"type": "object", "default": None, "nullable": True, "label": "Hole Table ([x, y, top_z, bottom_z, diameter] rows; blank = 3×3 demo grid)"},
+        "cycle_type": {"type": "choice", "default": "drilling", "choices": list(MEASURED_CYCLE_TYPES), "label": "Cycle Type (measured vocabulary only)"},
+        "pecking_depth": {"type": "float", "default": None, "nullable": True, "min": 0.01, "max": 50.0, "label": "Peck Depth (mm; chip-breaking / deep-drilling only; blank = 0.25 × D)"},
+        "retract_height_offset": {"type": "float", "default": 5.0, "min": 0.0, "max": 50.0, "label": "Retract Plane (mm above stock top)"},
+        "clearance_height_offset": {"type": "float", "default": 10.0, "min": 0.0, "max": 100.0, "label": "Clearance (mm above retract plane)"},
+        "hole_toolpath_order": {"type": "choice", "default": "optimize-order", "choices": [m for m in ORDER_MODES if m not in UNMEASURED_ORDER_MODES], "label": "Hole Order"},
+        "hole_diameter_minimum": {"type": "float", "default": 0.0, "min": 0.0, "max": 1000.0, "label": "Hole Diameter Min (mm; range selection)"},
+        "hole_diameter_maximum": {"type": "float", "default": 100.0, "min": 0.0, "max": 1000.0, "label": "Hole Diameter Max (mm; range selection)"},
+        "feed_rate": {"type": "float", "default": 1000.0, "min": 1.0, "max": 5000.0, "label": "Feed Rate (mm/min)"},
+        "spindle_speed": {"type": "int", "default": 4000, "min": 0, "max": 100000, "label": "Spindle Speed (rpm)"},
     },
 }
 
@@ -162,7 +202,7 @@ class StrategyExecutor:
         (``profile_source``, ``passes``, achieved cusp height, the feed
         histogram as a bin/move digest, …) are written to the module log by
         ``_kernel_moves`` instead.  Kernel-backed strategies are invoked
-        here; the five legacy app-local planners return their own moves.
+        here; the four legacy app-local planners return their own moves.
         """
         params = params or {}
 
@@ -720,72 +760,90 @@ class StrategyExecutor:
         return moves
 
     # ------------------------------------------------------------------
-    # Drilling — canned cycle at specified points
+    # Drilling (F3) — kernel-backed
     # ------------------------------------------------------------------
 
     def _drilling(
         self, tool: ToolDef, bbox: BBox, params: dict[str, Any]
     ) -> list[Move]:
-        peck_depth = params["peck_depth"]
-        retract = params["retract"]
-        dwell = params["dwell"]
+        """Run the kernel's F3 canned-cycle drilling strategy.
 
-        moves: list[Move] = []
+        The schema speaks the kernel's vocabulary, but it arrives at two
+        levels: ``holes``, ``feed_rate`` and ``spindle_speed`` are
+        ``generate_toolpath`` keywords as they stand, while the seven cycle
+        keys are nested under ``cycle=`` — the only dict DrillingStrategy
+        reads for CycleConfig fields (a cycle key passed at the top level
+        would be silently ignored, which the exact-set spy test in
+        ``tests/integration/test_strategy_executor_dispatch.py`` pins).
 
-        # Default: drill a pattern of holes across the stock
-        # 3x3 grid for demonstration
-        x_positions = [
-            bbox.min.x + bbox.size.x * frac
-            for frac in [0.25, 0.5, 0.75]
-        ]
-        y_positions = [
-            bbox.min.y + bbox.size.y * frac
-            for frac in [0.25, 0.5, 0.75]
-        ]
+        ``pecking_depth=None`` (the schema's blank default) is passed
+        through rather than dropped: CycleConfig reads ``None`` as
+        "evaluate the stored expression" (0.25 × D), so blank means the
+        kernel's own default instead of an app-side guess.
 
-        # Start rapid
-        moves.append(Move(
-            move_type=MoveType.RAPID,
-            end=Vec3(x_positions[0], y_positions[0], bbox.max.z + 10),
-        ))
-
-        for y in y_positions:
-            for x in x_positions:
-                # Rapid to hole position
-                moves.append(Move(
-                    move_type=MoveType.RAPID,
-                    end=Vec3(x, y, bbox.max.z + 2),
-                ))
-
-                # Peck drilling
-                z = bbox.max.z
-                while z > bbox.min.z:
-                    z -= peck_depth
-                    z = max(bbox.min.z, z)
-
-                    moves.append(Move(
-                        move_type=MoveType.DRILL,
-                        end=Vec3(x, y, z),
-                        feed=300.0,
-                        spindle_speed=4000,
-                    ))
-
-                    # Retract for chip breaking
-                    moves.append(Move(
-                        move_type=MoveType.RETRACT,
-                        end=Vec3(x, y, z + retract),
-                    ))
-
-                # Full retract
-                moves.append(Move(
-                    move_type=MoveType.RAPID,
-                    end=Vec3(x, y, bbox.max.z + 5),
-                ))
-
-        # Final retract
-        moves.append(Move(
-            move_type=MoveType.RAPID,
-            end=Vec3(bbox.center.x, bbox.center.y, bbox.max.z + 20),
-        ))
-
+        ``holes=None`` is the app's default geometry.  Nothing carries a
+        hole table into ``execute()`` yet (the strategy selector picks
+        names and numbers, not geometry), so the legacy planner's 3×3
+        demonstration grid — the exact points this method used to peck at
+        — is rebuilt as the hole table the kernel requires and the
+        kernel's measured cycle expansion does the cutting.  The kernel
+        performs no feature recognition, so a caller passes ``holes=`` to
+        drill anything else.
+        """
+        holes = params["holes"]
+        if holes is None:
+            holes = self._demo_holes(tool, bbox)
+        moves = self._kernel_moves(
+            "drilling",
+            tool,
+            bbox,
+            holes=holes,
+            cycle={
+                "cycle_type": params["cycle_type"],
+                "pecking_depth": params["pecking_depth"],
+                "retract_height_offset": params["retract_height_offset"],
+                "clearance_height_offset": params["clearance_height_offset"],
+                "hole_toolpath_order": params["hole_toolpath_order"],
+                "hole_diameter_minimum": params["hole_diameter_minimum"],
+                "hole_diameter_maximum": params["hole_diameter_maximum"],
+            },
+            feed_rate=params["feed_rate"],
+            spindle_speed=params["spindle_speed"],
+        )
+        if not moves:
+            # The kernel's own answer to a table that selects nothing is
+            # R11's silent empty selection.  At app level an empty toolpath
+            # would be reported by the GUI as a completed cut, so it
+            # becomes this executor's uniform failure instead — a
+            # ValueError naming both ways a table can come back empty.
+            raise ValueError(
+                "drilling: 0 moves - the hole table is empty, or no hole's "
+                "diameter lies inside "
+                f"[{params['hole_diameter_minimum']:g}, "
+                f"{params['hole_diameter_maximum']:g}] mm "
+                "(hole_diameter_minimum..hole_diameter_maximum)"
+            )
         return moves
+
+    @staticmethod
+    def _demo_holes(tool: ToolDef, bbox: BBox) -> list[dict[str, float]]:
+        """The legacy planner's 3×3 demonstration grid as a hole table.
+
+        Holes sit at 25 / 50 / 75 % of each stock axis — where ``_drilling``
+        used to peck — from the stock top down to the stock bottom, each as
+        wide as the tool in the spindle.  This is the app's default
+        geometry, not a claim about the part (the same declared-gap pattern
+        as F2's stock-footprint fallback): the kernel has no feature
+        recognition and the GUI cannot supply a hole table yet.
+        """
+        return [
+            {
+                "x": bbox.min.x + bbox.size.x * frac_x,
+                "y": bbox.min.y + bbox.size.y * frac_y,
+                "top_z": bbox.max.z,
+                "bottom_z": bbox.min.z,
+                "diameter": tool.diameter,
+            }
+            for frac_y in (0.25, 0.5, 0.75)
+            for frac_x in (0.25, 0.5, 0.75)
+        ]

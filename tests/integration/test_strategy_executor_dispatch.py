@@ -1,26 +1,31 @@
 """
-App-layer dispatch for the two P5 strategies (F1 + F2).
+App-layer dispatch for the three kernel-backed strategies (F1, F2, F3).
 
 ``app/strategy_executor.py`` is the layer between the UI and the kernel: it
-owns the parameter schemas ``execute()`` validates against (the GUI has no
-parameter panel yet — the strategy selector shows names only), and it decides
-what each strategy is actually invoked with.  Until t_130bcaa7 it listed only
+owns the parameter schemas ``execute()`` validates against (the selector
+picks names; parameters ride in on ``execute(params=...)`` from whichever
+caller drives it), and it decides what each strategy is actually invoked
+with.  Until t_130bcaa7 it listed only
 the legacy app-local planners, so F1 (P5/3, ``adaptive_engagement``) and F2
 (P5/4, ``waterline_finishing``) were reachable from the kernel and from the
-kernel tests but not from the application.
+kernel tests but not from the application; t_6a5f2239 then re-pointed
+``drilling`` at the kernel's F3 ``DrillingStrategy``, retiring the app-local
+peck planner so one name no longer hides two algorithms.
 
-These tests pin the app-side contract for both:
+These tests pin the app-side contract for all three:
 
   * the strategy is listed by ``list_strategies()`` and dispatched by
     ``execute()``,
   * the app's parameter vocabulary reaches the kernel intact,
-  * the two translations the executor owns actually happen — ``step_over``
-    in mm becomes the kernel's stepover-as-a-fraction-of-D for F1, and both
-    strategies are handed the stock's z faces so one contract covers them
-    (F2 would otherwise plan against its own ``top_of_stock = 0.0`` /
-    ``bottom_of_stock = -10.0`` defaults, a different z range from the stock
-    on screen; F1 already defaults to the stock faces, but passing them
-    explicitly keeps the two on the same rule),
+  * the translations the executor owns actually happen — ``step_over``
+    in mm becomes the kernel's stepover-as-a-fraction-of-D for F1, every
+    kernel-backed strategy is handed the stock's z faces (F2 would
+    otherwise plan against its own ``top_of_stock = 0.0`` /
+    ``bottom_of_stock = -10.0`` defaults, a different z range from the
+    stock on screen; F1 already defaults to the stock faces, but passing
+    them explicitly keeps the strategies on the same rule), and F3's
+    seven cycle keys are nested under ``cycle=`` where DrillingStrategy
+    reads them,
   * a rejected parameter set surfaces as ``ValueError`` rather than as an
     empty toolpath the GUI would report as a successful cut.
 
@@ -44,6 +49,11 @@ from app.strategy_executor import (
     list_strategies,
 )
 from kernel.strategies import list_strategies as kernel_list_strategies
+from kernel.strategies.drilling import (
+    MEASURED_CYCLE_TYPES,
+    ORDER_MODES,
+    UNMEASURED_ORDER_MODES,
+)
 from kernel.strategies.waterline_finishing import FINISH_MODES
 from kernel.types import BBox, MoveType, ToolDef, ToolpathData, Vec3
 
@@ -69,19 +79,30 @@ SMALL = BBox(min=Vec3(0, 0, 0), max=Vec3(20, 20, 10))
 PROFILE = [[-10.0, -10.0], [10.0, -10.0], [10.0, 10.0], [-10.0, 10.0]]
 STOCK_AROUND_PROFILE = BBox(min=Vec3(-30, -30, 0), max=Vec3(30, 30, 10))
 
+#: A hole table the app-layer tests drill: two 6 mm holes through a 10 mm
+#: plate, both inside SMALL.  Dict rows are the kernel's own hole spelling
+#: (``_normalise_holes``), so passing them through must be lossless.
+HOLES = [
+    {"x": 5.0, "y": 5.0, "top_z": 10.0, "bottom_z": 0.0, "diameter": 6.0},
+    {"x": 15.0, "y": 15.0, "top_z": 10.0, "bottom_z": 0.0, "diameter": 6.0},
+]
+
 #: Kernel strategies ``execute()`` still answers with its own legacy
 #: app-local planner of the SAME NAME rather than the kernel algorithm.
-#: Two algorithms share one name here on purpose for now: ``app/`` was on the
-#: P5 no-touch list, so the cards that landed the kernel algorithms could not
-#: re-point the executor.  The set is recomputed from a live dispatch in
+#: Two algorithms share one name here on purpose for now: ``app/`` was on
+#: the P5 no-touch list, so the cards that landed the kernel algorithms
+#: could not re-point the executor — t_130bcaa7 proved ``app/`` editable
+#: and re-pointed F1/F2, t_6a5f2239 re-pointed ``drilling`` at the
+#: kernel's F3 DrillingStrategy (hence that name's departure from this
+#: set), and what remains is the app-local debt still to pay down.  The
+#: set is recomputed from a live dispatch in
 #: ``test_declared_legacy_name_collisions_match_reality``, so a new kernel
 #: strategy (or a re-pointed one) forces a deliberate edit here instead of
-#: drifting silently.  Follow-up work: t_130bcaa7's child cards.
+#: drifting silently.
 LEGACY_NAME_COLLISIONS = {
     "face_milling",
     "adaptive_clearing",
     "pocketing",
-    "drilling",
 }
 
 
@@ -115,10 +136,11 @@ class _Spy:
 # ---------------------------------------------------------------------------
 
 class TestInventory:
-    def test_both_p5_strategies_are_listed(self) -> None:
+    def test_the_three_p5_strategies_are_listed(self) -> None:
         names = list_strategies()
         assert "adaptive_engagement" in names
         assert "waterline_finishing" in names
+        assert "drilling" in names
 
     def test_every_kernel_strategy_is_reachable_from_the_app(self) -> None:
         """The regression this card exists to fix, stated as a general rule.
@@ -249,6 +271,61 @@ class TestSchemas:
         spec = get_strategy_params("waterline_finishing")["cell_mm"]
         assert spec["default"] > 0.05
         assert spec["min"] <= 0.05 <= spec["max"], "0.05 must stay requestable"
+
+    def test_f3_schema_is_the_kernel_vocabulary_not_the_legacy_trio(self) -> None:
+        """``peck_depth`` / ``retract`` / ``dwell`` are gone on purpose.
+
+        None of the three names is a keyword DrillingStrategy accepts (see
+        the schema comment for what each one became, or why it went), so
+        keeping them would promise controls the kernel does not have.
+        """
+        schema = get_strategy_params("drilling")
+        assert set(schema) == {
+            "holes", "cycle_type", "pecking_depth", "retract_height_offset",
+            "clearance_height_offset", "hole_toolpath_order",
+            "hole_diameter_minimum", "hole_diameter_maximum",
+            "feed_rate", "spindle_speed",
+        }
+        for legacy in ("peck_depth", "retract", "dwell"):
+            assert legacy not in schema, legacy
+        for key, spec in schema.items():
+            assert "default" in spec and "label" in spec, key
+
+    def test_f3_offers_only_cycle_types_the_capture_measured(self) -> None:
+        """The other seven legal Choices make the kernel refuse outright."""
+        spec = get_strategy_params("drilling")["cycle_type"]
+        assert spec["type"] == "choice"
+        assert spec["choices"] == list(MEASURED_CYCLE_TYPES)
+        assert spec["default"] in spec["choices"]
+
+    def test_f3_hole_order_never_offers_the_unmeasured_mode(self) -> None:
+        """``order-inside-out`` has no capture; the kernel raises on it."""
+        spec = get_strategy_params("drilling")["hole_toolpath_order"]
+        assert spec["choices"] == [
+            mode for mode in ORDER_MODES if mode not in UNMEASURED_ORDER_MODES
+        ]
+        assert "order-inside-out" not in spec["choices"]
+        assert spec["default"] in spec["choices"]
+
+    def test_f3_geometry_and_peck_defaults_are_blank(self) -> None:
+        """Blank means the kernel's own answer, not an app-side guess.
+
+        ``holes=None`` is turned into the demo grid at dispatch (the GUI
+        cannot supply a table yet); ``pecking_depth=None`` is passed
+        through as ``None`` so ``CycleConfig`` evaluates its stored
+        expression (0.25 × D) instead of the app inventing a number.
+        """
+        schema = get_strategy_params("drilling")
+        for key in ("holes", "pecking_depth"):
+            assert schema[key]["default"] is None, key
+            assert schema[key]["nullable"] is True, key
+
+    def test_f3_default_diameter_range_selects_the_suite_tool(self) -> None:
+        """The demo grid is drilled with TOOL (D = 10 mm); R11 would drop
+        every one of its holes silently if the default range excluded it."""
+        schema = get_strategy_params("drilling")
+        assert schema["hole_diameter_minimum"]["default"] <= TOOL.diameter
+        assert TOOL.diameter <= schema["hole_diameter_maximum"]["default"]
 
 
 # ---------------------------------------------------------------------------
@@ -681,16 +758,325 @@ class TestWaterlineFinishingDispatch:
 
 
 # ---------------------------------------------------------------------------
-# Kernel-backed dispatch plumbing (both strategies)
+# Dispatch: drilling (F3)
+# ---------------------------------------------------------------------------
+
+class TestDrillingDispatch:
+    def test_execute_returns_a_toolpath_for_the_standard_stock(self) -> None:
+        toolpath = EXECUTOR.execute(
+            strategy="drilling", tool=TOOL, stock_bbox=STOCK,
+        )
+        assert isinstance(toolpath, ToolpathData)
+        assert toolpath.strategy == "drilling"
+        assert toolpath.name == "Drilling"
+        assert toolpath.tool is TOOL
+        assert len(toolpath.moves) > 0
+        # params is the VALIDATED APP dict: the caller asked for nothing, so
+        # every key is its schema default — the demo grid is dispatch-time
+        # geometry, not a parameter the caller suddenly appears to have set.
+        assert set(toolpath.params) == set(get_strategy_params("drilling"))
+        assert toolpath.params["holes"] is None
+
+    def test_the_default_path_is_answered_by_the_kernel(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The whole point of this card: no legacy planner may answer
+        ``drilling`` any more, not even on the no-parameter path the GUI
+        takes today.
+        """
+        spy = _Spy()
+        spy.install(monkeypatch)
+
+        EXECUTOR.execute(strategy="drilling", tool=TOOL, stock_bbox=STOCK)
+
+        assert spy.name == "drilling"
+
+    def test_the_no_param_geometry_is_the_legacy_3x3_demo_grid(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """What ``holes=None`` is translated to, asserted coordinate-wise.
+
+        25 / 50 / 75 % of each stock axis, stock top to stock bottom, each
+        hole as wide as the spindle's tool — the exact points the retired
+        ``_drilling`` pecked at, so the default path's GEOMETRY is
+        unchanged while the algorithm behind it is now the kernel's.
+        """
+        spy = _Spy()
+        spy.install(monkeypatch)
+
+        EXECUTOR.execute(strategy="drilling", tool=TOOL, stock_bbox=STOCK)
+
+        holes = spy.kwargs["holes"]
+        assert len(holes) == 9
+        assert {h["x"] for h in holes} == {-25.0, 0.0, 25.0}
+        assert {h["y"] for h in holes} == {-25.0, 0.0, 25.0}
+        for h in holes:
+            assert h["top_z"] == STOCK.max.z
+            assert h["bottom_z"] == STOCK.min.z
+            assert h["diameter"] == TOOL.diameter
+
+    def test_the_demo_grid_is_drilled_through_the_stock_planes(self) -> None:
+        """End-to-end geometry: measured cycle expansion, app's grid.
+
+        The retract plane is stock top + 5 mm and the clearance plane
+        another + 10 mm above it (the kernel's measured defaults, which
+        this app schema mirrors), and each hole is cut from the stock top
+        down to the stock bottom exactly as the legacy planner did.
+        """
+        toolpath = EXECUTOR.execute(
+            strategy="drilling", tool=TOOL, stock_bbox=STOCK,
+        )
+        cuts = [m for m in toolpath.moves if m.move_type is MoveType.LINEAR]
+        assert len(cuts) == 9, "one plunge per grid hole on the plain cycle"
+        assert {m.end.z for m in cuts} == {STOCK.min.z}
+        assert {(m.end.x, m.end.y) for m in cuts} == {
+            (x, y) for x in (-25.0, 0.0, 25.0) for y in (-25.0, 0.0, 25.0)
+        }
+        assert max(m.end.z for m in toolpath.moves) == STOCK.max.z + 15.0
+        assert STOCK.max.z + 5.0 in {m.end.z for m in toolpath.moves}
+
+    def test_the_default_feed_is_the_measured_plunge_expression(self) -> None:
+        """``feed_rate`` 1000 → ``tool_feed_cutting`` 1000 → a flat end
+        mill plunges at 1000/3, serialised as the post writes it, and the
+        panel's spindle default rides on every move.
+        """
+        toolpath = EXECUTOR.execute(
+            strategy="drilling", tool=TOOL, stock_bbox=STOCK,
+        )
+        feeds = {m.feed for m in toolpath.moves
+                 if m.move_type is MoveType.LINEAR}
+        assert feeds == {333.333344}
+        assert {m.spindle_speed for m in toolpath.moves} == {4000.0}
+
+    def test_an_explicit_hole_table_passes_through_untouched(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        spy = _Spy()
+        spy.install(monkeypatch)
+
+        EXECUTOR.execute(
+            strategy="drilling", tool=TOOL, stock_bbox=SMALL,
+            params={"holes": HOLES},
+        )
+
+        assert spy.kwargs["holes"] is HOLES, "not rebuilt, not copied"
+
+    def test_every_drilling_parameter_reaches_the_kernel(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Ten app keys, six kernel keywords — one of them (``cycle``)
+        being the nested dict of seven CycleConfig fields.
+
+        ``DrillingStrategy._build_config`` ignores any keyword it does not
+        know, so a MIS-WIRED key — a cycle field left at the top level, an
+        app-only name passed through — is silently dropped and the kernel
+        plans at its own default, which for several of these equals the
+        app default.  Every value below differs from the kernel default on
+        purpose, and the exact sets are asserted so nothing may leak.
+        """
+        spy = _Spy()
+        spy.install(monkeypatch)
+
+        EXECUTOR.execute(
+            strategy="drilling", tool=TOOL, stock_bbox=SMALL,
+            params={
+                "holes": HOLES,
+                "cycle_type": "deep-drilling",
+                "pecking_depth": 2.5,
+                "retract_height_offset": 7.0,
+                "clearance_height_offset": 12.0,
+                "hole_toolpath_order": "order-by-x",
+                "hole_diameter_minimum": 3.0,
+                "hole_diameter_maximum": 50.0,
+                "feed_rate": 750.0,
+                "spindle_speed": 6000,
+            },
+        )
+
+        assert spy.name == "drilling"
+        assert spy.kwargs["holes"] is HOLES
+        assert spy.kwargs["feed_rate"] == 750.0
+        assert spy.kwargs["spindle_speed"] == 6000
+        assert spy.kwargs["top_of_stock"] == SMALL.max.z
+        assert spy.kwargs["bottom_of_stock"] == SMALL.min.z
+        assert set(spy.kwargs) == {
+            "holes", "cycle", "feed_rate", "spindle_speed",
+            "top_of_stock", "bottom_of_stock",
+        }
+        assert spy.kwargs["cycle"] == {
+            "cycle_type": "deep-drilling",
+            "pecking_depth": 2.5,
+            "retract_height_offset": 7.0,
+            "clearance_height_offset": 12.0,
+            "hole_toolpath_order": "order-by-x",
+            "hole_diameter_minimum": 3.0,
+            "hole_diameter_maximum": 50.0,
+        }
+        # a cycle key left at the top level would be ignored by the kernel;
+        # a cycle key NESTED and also repeated up here would be a bug too
+        assert set(spy.kwargs) & set(spy.kwargs["cycle"]) == set()
+
+    def test_a_blank_peck_depth_reaches_the_kernel_as_none(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Blank must not be replaced by an app-chosen number.
+
+        ``CycleConfig`` reads ``pecking_depth=None`` as "evaluate the
+        stored expression" (0.25 × D); passing 0.0 or the schema's min
+        instead would be the app pretending to know the tool.
+        """
+        spy = _Spy()
+        spy.install(monkeypatch)
+
+        EXECUTOR.execute(
+            strategy="drilling", tool=TOOL, stock_bbox=SMALL,
+            params={"cycle_type": "deep-drilling"},
+        )
+
+        assert spy.kwargs["cycle"]["pecking_depth"] is None
+
+    def test_pecking_depth_only_bites_on_a_peck_cycle(self) -> None:
+        """The kernel's gate, observed from the app: ``pecking_depth`` is
+        stored but inert on the default ``drilling`` cycle, and splits the
+        plunge the moment ``deep-drilling`` is selected — so the schema
+        label's promise is true at runtime.
+        """
+        hole = [HOLES[0]]
+        plain = EXECUTOR.execute(
+            strategy="drilling", tool=TOOL, stock_bbox=SMALL,
+            params={"holes": hole, "cycle_type": "drilling",
+                    "pecking_depth": 2.0},
+        )
+        pecked = EXECUTOR.execute(
+            strategy="drilling", tool=TOOL, stock_bbox=STOCK,
+            params={"holes": [{"x": 10.0, "y": 10.0, "top_z": 20.0,
+                               "bottom_z": 5.0, "diameter": 6.0}],
+                    "cycle_type": "deep-drilling", "pecking_depth": 3.0},
+        )
+
+        def plunges(tp: ToolpathData) -> list[float]:
+            return sorted(m.end.z for m in tp.moves
+                          if m.move_type is not MoveType.RAPID)
+
+        assert plunges(plain) == [0.0], "plain drilling is one plunge"
+        assert len(plunges(pecked)) > 1, "deep drilling must peck"
+
+    def test_the_legacy_keys_are_reported_and_never_reach_the_kernel(
+        self, monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """``peck_depth`` / ``retract`` / ``dwell`` are warned about AND
+        shown not to alias anything: the kernel still receives its own
+        defaults, so a caller cannot half-migrate onto a name the schema
+        dropped.
+        """
+        spy = _Spy()
+        spy.install(monkeypatch)
+
+        with caplog.at_level(logging.WARNING, logger="app.strategy_executor"):
+            EXECUTOR.execute(
+                strategy="drilling", tool=TOOL, stock_bbox=SMALL,
+                params={"peck_depth": 4.0, "retract": 3.0, "dwell": 1.0},
+            )
+
+        assert "outside its schema" in caplog.text
+        for legacy in ("peck_depth", "retract", "dwell"):
+            assert legacy in caplog.text, legacy
+        assert spy.kwargs["cycle"] == {
+            "cycle_type": "drilling",
+            "pecking_depth": None,
+            "retract_height_offset": 5.0,
+            "clearance_height_offset": 10.0,
+            "hole_toolpath_order": "optimize-order",
+            "hole_diameter_minimum": 0.0,
+            "hole_diameter_maximum": 100.0,
+        }
+
+    def test_a_malformed_hole_row_surfaces_the_kernel_error(self) -> None:
+        """Hole-table validation is the kernel's; its message must reach
+        the GUI instead of an empty toolpath.
+        """
+        with pytest.raises(ValueError, match="5-tuple"):
+            EXECUTOR.execute(
+                strategy="drilling", tool=TOOL, stock_bbox=SMALL,
+                params={"holes": [[5.0, 5.0]]},
+            )
+
+    def test_an_inverted_diameter_range_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="hole_diameter_minimum must not"):
+            EXECUTOR.execute(
+                strategy="drilling", tool=TOOL, stock_bbox=SMALL,
+                params={"hole_diameter_minimum": 50.0,
+                        "hole_diameter_maximum": 10.0},
+            )
+
+    def test_a_table_the_range_selects_empty_is_refused_not_empty(
+        self,
+    ) -> None:
+        """R11's silent empty selection becomes a ValueError at app level.
+
+        The kernel is right to plan nothing when no hole matches (that is
+        the measured Fusion behaviour), but the GUI would report the
+        resulting 0-move toolpath as a completed cut — the exact failure
+        mode ``_kernel_moves``' docstring rules out — so the executor
+        names the range instead.
+        """
+        with pytest.raises(ValueError, match="0 moves"):
+            EXECUTOR.execute(
+                strategy="drilling", tool=TOOL, stock_bbox=SMALL,
+                params={"holes": HOLES,          # 6 mm holes
+                        "hole_diameter_minimum": 50.0,
+                        "hole_diameter_maximum": 100.0},
+            )
+
+    def test_an_empty_hole_table_is_refused_not_planned(self) -> None:
+        """``holes=[]`` is the other way back to zero moves.
+
+        An explicitly empty table is even less ambiguous than an empty
+        selection — the caller asked for no holes — and the GUI would
+        still report the 0-move result as a completed cut, so it gets the
+        same ValueError rather than R11's silent no-toolpath state.
+        """
+        with pytest.raises(ValueError, match="0 moves"):
+            EXECUTOR.execute(
+                strategy="drilling", tool=TOOL, stock_bbox=SMALL,
+                params={"holes": []},
+            )
+
+    def test_kernel_diagnostics_reach_the_module_log(
+        self, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """``execute()`` keeps the app params on the result, so the
+        kernel's own selection/plane/feed report survives only here."""
+        with caplog.at_level(logging.INFO, logger="app.strategy_executor"):
+            EXECUTOR.execute(strategy="drilling", tool=TOOL, stock_bbox=STOCK)
+        assert "Kernel strategy 'drilling'" in caplog.text
+        assert "holes_selected" in caplog.text
+        assert "feed_histogram" in caplog.text
+        assert "bins /" in caplog.text, "the histogram should be a digest"
+
+
+# ---------------------------------------------------------------------------
+# Kernel-backed dispatch plumbing (all kernel-backed strategies)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize(
-    "strategy", ["adaptive_engagement", "waterline_finishing"],
+    "strategy", ["adaptive_engagement", "waterline_finishing", "drilling"],
 )
 class TestKernelPlumbing:
     def test_stock_z_faces_come_from_the_bbox(
         self, monkeypatch: pytest.MonkeyPatch, strategy: str,
     ) -> None:
+        """Every kernel-backed strategy is handed the same stock faces.
+
+        ``drilling`` does not READ them — DrillingStrategy measures its
+        planes from the ``stock`` argument, which is this same bbox, so
+        the numbers coincide either way — hence for that strategy this
+        pins the plumbing, not the plane arithmetic;
+        ``TestDrillingDispatch
+        ::test_the_demo_grid_is_drilled_through_the_stock_planes`` pins
+        the latter.
+        """
         spy = _Spy()
         spy.install(monkeypatch)
 

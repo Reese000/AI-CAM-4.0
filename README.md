@@ -80,7 +80,7 @@ app/                 ← Qt/PySide6 lives here ONLY.
   __main__.py        ← Entry point, sys.path cleanup, dark palette
   main_window.py     ← Single MainWindow with menus, toolbar, GL viewport
   strategy_executor.py ← Bridge: UI params → kernel strategy → ToolpathData
-                      (adaptive_engagement / waterline_finishing dispatch to kernel/strategies/)
+                      (adaptive_engagement / waterline_finishing / drilling dispatch to kernel/strategies/)
   workers.py         ← QThread-based frame generation
   viewport/          ← (planned) 8-file OpenGL viewport decomposition
 ```
@@ -108,7 +108,7 @@ G-code export: segments_to_ir(toolpath) → IR → FanucRenderer/HeidenhainRende
 - **STL parser:** Binary + ASCII, normal fixing, vertex deduplication
 - **G-code parser:** Full G/M code support with modal tracking
 - **SDF engine:** Z-map heightfield with scipy interpolation
-- **6 CAM strategies:** Face milling, adaptive clearing, adaptive engagement (F1, engagement-gated feed), pocketing, waterline finishing (F2, Z-level + constant scallop), drilling — all generating valid toolpaths
+- **6 CAM strategies:** Face milling, adaptive clearing, adaptive engagement (F1, engagement-gated feed), pocketing, waterline finishing (F2, Z-level + constant scallop), drilling (F3, measured canned cycles over a hole table) — all generating valid toolpaths
 - **Simulation engine:** Z-map heightfield stock model with vectorized cut simulation
 - **Simulation controller:** Qt-backed playback with play/pause/stop/seek
 - **Post-processors:** IR intermediate representation, Fanuc renderer, Heidenhain renderer
@@ -118,7 +118,7 @@ G-code export: segments_to_ir(toolpath) → IR → FanucRenderer/HeidenhainRende
 
 ### In Progress / WIP
 - **Viewport:** Currently a single `GLViewportWidget` in main_window.py — ARCHITECTURE.md plans 8-file decomposition but not yet split out
-- **App-layer strategy routing:** `strategy_executor.py` still answers five names with its own legacy planners — `face_milling`, `adaptive_clearing`, `pocketing`, `contour` and `drilling`. Four of those collide with a kernel algorithm of the same name (the kernel has no `contour`), so for those four two algorithms currently share one name. Only F1 (`adaptive_engagement`) and F2 (`waterline_finishing`) dispatch to the kernel. `app/` sat on the P5 no-touch list, which is why the cards that landed the kernel algorithms could not re-point the executor; the split is declared in `LEGACY_NAME_COLLISIONS` in `tests/integration/test_strategy_executor_dispatch.py` and recomputed by a test that fails if it drifts.
+- **App-layer strategy routing:** `strategy_executor.py` still answers four names with its own legacy planners — `face_milling`, `adaptive_clearing`, `pocketing` and `contour`. Three of those collide with a kernel algorithm of the same name (the kernel has no `contour`), so for those three two algorithms currently share one name. F1 (`adaptive_engagement`), F2 (`waterline_finishing`) and F3 (`drilling`) dispatch to the kernel; F3's drilling schema is the kernel's vocabulary (`holes`, `cycle_type`, `pecking_depth`, `retract_height_offset`, …), not the retired `peck_depth` / `retract` / `dwell` trio. `app/` sat on the P5 no-touch list, which is why the cards that landed the kernel algorithms could not re-point the executor — t_130bcaa7 (F1/F2) and t_6a5f2239 (drilling) have since paid that down; the split is declared in `LEGACY_NAME_COLLISIONS` in `tests/integration/test_strategy_executor_dispatch.py` and recomputed by a test that fails if it drifts.
 - **Foundry verification:** Multiple foundry run directories contain verified kernel function implementations (vec3 ops, parsing, milling paths) — these are artifacts of the Foundry Manager verification system
 
 ### Not Yet Implemented
