@@ -99,10 +99,13 @@ Honest limits (declared, not hidden)
   cousin of this check and F2 has no export-time run of its own yet.
   (2) LATERAL clearance: the check tests the tool AXIS, the point the path
   actually descends through.  Material that reaches within ``R`` of the axis
-  without containing it is not reported - but at that distance the CUT at
-  that level is already impossible for the same reason (the flute occupies
-  the whole column above the tip), so it is a property of the level, not of
-  the entry, and is out of this check's scope.
+  without containing it is not reported.  Up to the flute's reach at the
+  cutting level that is a property of the LEVEL, not of the entry - the cut
+  puts the flute in the same place anyway, so no entry could have been safe
+  there - but material sitting HIGHER than the flute reaches at ``fp.z``
+  (still below ``clearance_height``) is swept by the entry descent and never
+  touched by the cut: an entry-only hazard this check cannot see without the
+  tool's stick-out, which this module does not know.  Declared, not patched.
 * A `finish_mode` of ``scallop`` cuts rings on the FLOOR only (``scallop_z``,
   default the deepest level); it is a horizontal iso-offset, not a 3D
   constant-scallop surface finishing.
@@ -1118,6 +1121,36 @@ CLEARANCE_NUDGE_MM = 1e-7
 NUDGE_SLOPE = (math.sqrt(5.0) - 1.0) / 2.0
 
 
+def mesh_xy_bounds(mesh: dict) -> tuple[float, float, float, float] | None:
+    """``(min_x, min_y, max_x, max_y)`` over the mesh's vertices, or ``None``.
+
+    A triangle's XY projection lies inside the XY box of its own vertices, so
+    the XY extent of a whole mesh IS the extent of its vertices: a query
+    outside this box is outside every face's projection, the column is
+    provably empty, and the O(faces) scan can be skipped.  That is the
+    common case for a finishing contour, which sits ``R`` outside the part
+    and is often outside its bounding box altogether (every prismatic fixture
+    in the tests is).  Computed once per ``generate_toolpath``.
+    """
+    verts = mesh.get("vertices")
+    if verts is None or len(verts) == 0:
+        return None
+    lo_x = lo_y = math.inf
+    hi_x = hi_y = -math.inf
+    for v in verts:
+        vx = float(v[0])
+        vy = float(v[1])
+        if vx < lo_x:
+            lo_x = vx
+        if vx > hi_x:
+            hi_x = vx
+        if vy < lo_y:
+            lo_y = vy
+        if vy > hi_y:
+            hi_y = vy
+    return (lo_x, lo_y, hi_x, hi_y)
+
+
 def column_crossings(mesh: dict, x: float, y: float) -> list[float]:
     """Every height at which the vertical line through ``(x, y)`` pierces ``mesh``.
 
@@ -1147,10 +1180,16 @@ def column_crossings(mesh: dict, x: float, y: float) -> list[float]:
       plane and takes the boundary from its neighbours;
     * two boxes stacked face to face contribute two coincident crossings at
       the step plane and the pair CANCELS - the union has no surface there,
-      and the parity below it stays correct (measured in
-      ``test_a_solid_box_pierces_once_per_face`` and the overhang fixtures);
-    * like every other geometric rule in this module it assumes a closed
-      mesh, which is what ``kernel.stl.parse_stl`` returns.
+      so one continuous solid reads as one band and the parity below stays
+      correct (``test_two_boxes_touching_face_to_face_keep_one_surface``);
+    * like every other geometric rule in this module it assumes a CLOSED
+      mesh, and here also that the shells do not INTERPENETRATE: two closed
+      shells that overlap XOR through one another under this even-odd rule,
+      so a union solid can read as air where they meet.  That is the same
+      rule ``mesh_section_loops`` rasterises sections with, and
+      ``kernel.stl.parse_stl`` returns one shell per solid - an
+      interpenetrating multi-body STL is out of contract here exactly as it
+      is for the section machinery it serves.
 
     F1's ``tools.export_f1_realpart.find_rapid_clearance_violations`` is the
     flat cousin of this function: it answers "does an XY-traversing rapid sit
@@ -1158,6 +1197,13 @@ def column_crossings(mesh: dict, x: float, y: float) -> list[float]:
     F2 entry hazard is a Z-descent at a fixed XY through geometry that GROWS
     with height, so a flat threshold cannot see it - this is its 3D
     counterpart, run on the mesh BEFORE the move is emitted.
+
+    Cost, measured here on a synthetic heightfield: ~10 ms per ray at 41 k
+    faces and ~37 ms at 161 k faces (pure Python, bounding-box rejected per
+    face).  One ray per loop, and none at all for a start point outside
+    :func:`mesh_xy_bounds`; the raster sweep the plan already pays per level
+    (up to ~11.7 s at :data:`MAX_RASTER_CELLS`, see that constant) is the
+    term that dominates a fine-cell job.
     """
     verts = mesh.get("vertices")
     faces = mesh.get("faces")
@@ -1926,6 +1972,9 @@ class WaterlineFinishingStrategy(BaseStrategy):
         # how many spans were actually measured, so a test can tell the fast
         # path from a check that never ran.
         mesh = cfg.get("mesh")
+        # XY box of the mesh, computed once: a loop start point outside it
+        # sits over air by construction and the ray cast is skipped.
+        mesh_bounds = mesh_xy_bounds(mesh) if mesh is not None else None
         clearance_checks = 0
         clearance_violations: list[str] = []
 
@@ -1957,7 +2006,11 @@ class WaterlineFinishingStrategy(BaseStrategy):
                     # leaves from ``loop[0]`` again (a closed contour, or cut
                     # back to its start), so the same two measurements cover
                     # the way out as well.
-                    crossings = column_crossings(mesh, x0, y0)
+                    within = (mesh_bounds is None
+                              or (mesh_bounds[0] <= x0 <= mesh_bounds[2]
+                                  and mesh_bounds[1] <= y0 <= mesh_bounds[3]))
+                    crossings = (column_crossings(mesh, x0, y0) if within
+                                 else [])   # outside the XY box: over air
                     for z_from, z_to, what in (
                         (clearance, z_prev, "rapid from clearance"),
                         (z_prev, fp.z, "plunge"),

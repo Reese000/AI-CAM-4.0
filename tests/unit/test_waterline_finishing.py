@@ -1576,21 +1576,37 @@ class TestRapidClearance:
         assert tp.params["clearance_violations"] == []
         assert "error" not in tp.params
 
-    def test_an_overhanging_section_is_refused_naming_the_rapid(self):
+    def test_an_overhanging_section_is_refused_naming_the_rapid(self, monkeypatch):
         """A section that grows with height must NOT be descended through.
 
         The card's fixture: the rapid from ``clearance_height`` down to
         ``z_prev`` at the loop start point travels straight through the wide
         box.  The strategy refuses instead of emitting, and the message
-        names the move, the XY, the solid band and the pass.
+        names the move, the XY, the solid band and the pass.  The spy proves
+        the detection came from a REAL ray cast - the start point lies inside
+        the mesh's XY box, so the ``mesh_xy_bounds`` fast path cannot have
+        swallowed it.
         """
         mesh = overhang_mesh()
         stock = rect_stock(0.0, 0.0, 60.0, 40.0, 0.0, 8.0)
+        calls: list[tuple[float, float]] = []
+        real = wlf.column_crossings
+
+        def spy(m, x, y):
+            calls.append((x, y))
+            return real(m, x, y)
+
+        monkeypatch.setattr(wlf, "column_crossings", spy)
         tp = get_strategy("waterline_finishing").run(
             mesh_operation(mesh, [8.0, 4.0, 0.0], 8.0, 0.0, stock))
         assert tp.moves == [], "a refused descent must not emit a toolpath"
         assert tp.params["clearance_violations"], "no violation was reported"
         assert tp.params["clearance_checks"] == 6    # 3 loops x 2 spans
+        assert calls, "the ray cast never ran"
+        bounds = wlf.mesh_xy_bounds(mesh)
+        assert bounds is not None
+        lo_x, lo_y, hi_x, hi_y = bounds
+        assert all(lo_x <= x <= hi_x and lo_y <= y <= hi_y for x, y in calls)
         err = tp.params["error"]
         assert "rapid from clearance" in err         # WHICH move
         assert "material in Z4..Z5" in err           # ...and where
@@ -1693,3 +1709,37 @@ class TestRapidClearance:
         # ...and a band that starts at the step plane still reads 4..8,
         # because the pair of coincident crossings sits at its lower edge.
         assert wlf.blocked_column(mesh, 30.0, 20.0, 4.0, 8.0) == [(4.0, 8.0)]
+
+    def test_mesh_xy_bounds_reads_the_vertex_box(self):
+        """The skip is sound only because that box bounds every projection."""
+        assert wlf.mesh_xy_bounds(box_mesh((0.0, 0.0, 0.0),
+                                           (16.0, 8.0, 6.0))) == (
+            0.0, 0.0, 16.0, 8.0)
+        # a sloped frustum: the box is the union of both footprints
+        assert wlf.mesh_xy_bounds(draft_mesh()) == (8.0, 8.0, 32.0, 32.0)
+        assert wlf.mesh_xy_bounds({"vertices": [], "faces": []}) is None
+        assert wlf.mesh_xy_bounds({}) is None
+
+    def test_a_start_point_outside_the_mesh_footprint_skips_the_ray_cast(
+            self, monkeypatch):
+        """The fast path is real, and it changes nothing.
+
+        The finishing contour of a box sits ``R`` outside it, so every start
+        point is outside the mesh's XY box, where no face projection can
+        contain the query and the column is provably empty.  Monkeypatching
+        the ray cast to blow up must leave the toolpath exactly what it was:
+        checks counted, violations empty, moves emitted.
+        """
+        mesh = box_mesh((0.0, 0.0, 0.0), (16.0, 8.0, 6.0))
+
+        def boom(*args, **kwargs):
+            raise AssertionError("the ray cast should have been skipped")
+
+        monkeypatch.setattr(wlf, "column_crossings", boom)
+        stock = rect_stock(-4.0, -2.0, 20.0, 10.0, 0.0, 6.0)
+        tp = get_strategy("waterline_finishing").run(
+            mesh_operation(mesh, [6.0, 3.0, 0.0], 6.0, 0.0, stock))
+        assert "error" not in tp.params
+        assert tp.params["clearance_checks"] == 6   # still measured, still clear
+        assert tp.params["clearance_violations"] == []
+        assert tp.params["moves"] > 0
