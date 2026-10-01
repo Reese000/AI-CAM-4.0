@@ -789,6 +789,14 @@ class StrategyExecutor:
         kernel's measured cycle expansion does the cutting.  The kernel
         performs no feature recognition, so a caller passes ``holes=`` to
         drill anything else.
+
+        A pasted table whose entry z sits below the stock surface is
+        refused by the kernel's entry guard (``validate_config``, the
+        unfed-RAPID descent — card t_e821ae89) and arrives here as the
+        same ``ValueError`` any rejected parameter set does: the GUI
+        shows a dialog instead of posting a program that rapids through
+        material.  No app-side pre-check — the kernel owns hole-table
+        validation (t_130bcaa7), so every caller inherits the guard.
         """
         holes = params["holes"]
         if holes is None:

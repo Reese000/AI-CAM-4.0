@@ -609,6 +609,104 @@ class TestValidation:
         assert "tapping" in result.params["error"]
 
 
+class TestEntryGuard:
+    """Refuse a hole table whose entry z sits below the stock surface.
+
+    ``cycle_body`` opens every hole body with an UNFED ``("rapid", top_z)``
+    and the per-hole positioning rapids sit on the retract / clearance
+    planes above the stock, so an entry z below the surface is a rapid
+    straight down THROUGH material - a crash, not a cut (card
+    ``t_e821ae89``).  The guard lives in ``validate_config`` — kernel-side,
+    so every caller inherits it — and the measured hazard it pins is the
+    reviewer's fixture: stock top 10 mm, a table row at ``top_z = 2.0``
+    → ``RAPID → z=2.0`` at (10, 10).
+
+    The emitter itself (``emit_moves``) stays unchecked on purpose: it is
+    the faithful port of ``impl/drilling/emitter.py``, whose offset
+    arithmetic (Honest limits #5) can place an entry below the surface —
+    a shape the strategy refuses while the emitter still reproduces it,
+    exactly like the peck ceiling that guards ``run()`` while
+    ``cycle_body`` stays faithful to the reference's schedule.
+    """
+
+    def test_a_subsurface_entry_is_refused_by_validate_params(self):
+        op = operation(holes((10.0, 10.0, 2.0, -5.0, 6.0)),
+                       stock_box=stock(z0=0.0, z1=10.0))
+        errors = get_strategy("drilling").validate_params(op)
+        assert any("below the stock surface" in e for e in errors), errors
+
+    def test_generate_toolpath_returns_an_error_toolpath_not_moves(self):
+        """The GUI path: error ``ToolpathData`` (empty moves, message in
+        ``params['error']``) instead of a program that rapids to z=2.0."""
+        result = get_strategy("drilling").generate_toolpath(
+            stock(z0=0.0, z1=10.0), tool(),
+            holes=holes((10.0, 10.0, 2.0, -5.0, 6.0)))
+        assert result.moves == []
+        assert "below the stock surface" in result.params["error"]
+        # the offending move is NAMED, not just counted (F2's convention)
+        assert "x=10.0, y=10.0" in result.params["error"]
+        assert "RAPID" in result.params["error"]
+
+    def test_a_table_flush_with_the_stock_surface_is_unaffected(self):
+        """``top_z == stock top`` — the measured fixture and the app's
+        demo-grid spelling — must plan exactly as before."""
+        op = operation(holes((10.0, 10.0, 10.0, 0.0, 6.0)),
+                       stock_box=stock(z0=0.0, z1=10.0))
+        assert get_strategy("drilling").validate_params(op) == []
+        result = get_strategy("drilling").run(op)
+        assert result.moves
+        entry = [m.end.z for m in result.moves
+                 if m.move_type is MoveType.RAPID and m.end.x == 10.0
+                 and m.end.y == 10.0]
+        assert 10.0 in entry, "the entry rapid lands ON the surface"
+
+    def test_an_entry_above_the_surface_is_not_refused(self):
+        """Strict '<': a hole starting above the stock top (a boss) is
+        reached by a rapid through AIR and stays legal."""
+        op = operation(holes((10.0, 10.0, 12.0, 5.0, 6.0)),
+                       stock_box=stock(z0=0.0, z1=10.0))
+        assert get_strategy("drilling").validate_params(op) == []
+
+    def test_a_subsurface_hole_outside_the_diameter_range_is_inert(self):
+        """Only SELECTED holes are checked — the emitter rapids nothing a
+        diameter range deselects (R4/R11), so a junk row the range excludes
+        can never be machined and must not block the legal ones."""
+        table = holes(
+            (10.0, 10.0, 10.0, 0.0, 6.0),      # flush, inside the range
+            (15.0, 15.0, -8.0, -12.0, 12.0))   # subsurface, excluded
+        op = operation(table, stock_box=stock(z0=0.0, z1=10.0),
+                       cycle={"hole_diameter_maximum": 8.0})
+        assert get_strategy("drilling").validate_params(op) == []
+        result = get_strategy("drilling").run(op)
+        assert result.params["holes_selected"] == 1
+
+    def test_the_declared_stock_top_z_override_drives_the_guard(self):
+        """The guard compares against the SAME effective stock top emission
+        planes are computed from (``stock_top_z`` override, else the BBox
+        top): a hole below a DECLARED surface is refused even when the BBox
+        top sits lower."""
+        op = operation(holes((0.0, 0.0, 0.0, -5.0, 6.0)),
+                       stock_box=stock(),          # BBox top 0.0
+                       stock_top_z=3.0)            # declared top 3.0
+        errors = get_strategy("drilling").validate_params(op)
+        assert any("below the stock surface z=3.0" in e for e in errors), errors
+
+    def test_a_non_finite_stock_top_is_a_validation_error_not_a_raise(self):
+        """``validate_config``'s contract is ``list[str]`` — round6 would
+        crash on nan, and HEAD's guard-free validate passed it straight
+        through to a raise inside ``generate_toolpath`` (round-1 review
+        finding).  It is now refused as an error at both levels."""
+        op = operation(holes((10.0, 10.0, 10.0, 0.0, 6.0)),
+                       stock_box=stock(z1=float("nan")))
+        errors = get_strategy("drilling").validate_params(op)
+        assert any("finite" in e for e in errors), errors
+        result = get_strategy("drilling").generate_toolpath(
+            stock(z1=float("nan")), tool(),
+            holes=holes((10.0, 10.0, 10.0, 0.0, 6.0)))
+        assert result.moves == []
+        assert "finite" in result.params["error"]
+
+
 class TestConfigResolution:
     def test_tool_diameter_falls_back_to_the_tool(self):
         result = get_strategy("drilling").run(
@@ -633,8 +731,14 @@ class TestConfigResolution:
         assert result.params["clearance_z"] == 15.0
 
     def test_explicit_stock_planes_override_the_bbox(self):
+        # The hole sits at z=5 - ABOVE both the BBox top (0.0) and the
+        # declared stock_top_z (3.0), so its entry clears the surface the
+        # entry guard checks (t_e821ae89) while planes fed from the hole's
+        # top instead of stock_top_z would still fail these asserts
+        # (round-1 review finding: top_z == stock_top_z would not tell the
+        # two derivations apart).
         result = get_strategy("drilling").run(
-            operation(holes((0, 0, 0, -5, 6.0)), stock_top_z=3.0,
+            operation(holes((0, 0, 5.0, -5, 6.0)), stock_top_z=3.0,
                       stock_bottom_z=-7.0))
         assert result.params["retract_z"] == 8.0
         assert result.params["clearance_z"] == 18.0

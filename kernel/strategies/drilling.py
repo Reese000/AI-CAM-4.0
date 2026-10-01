@@ -41,6 +41,31 @@ Geometry inputs
   from the explicit ``stock_top_z`` / ``stock_bottom_z`` keywords when a caller
   carries them elsewhere.  ``OperationParams.top_of_stock`` /
   ``bottom_of_stock`` / ``clearance_height`` are NOT read - see "Honest limits".
+* Entry guard (card ``t_e821ae89``): the emitter reaches each hole's entry z
+  with an UNFED ``RAPID`` from the retract plane (``cycle_body`` opens every
+  hole body with ``("rapid", top_z)``), so a caller-supplied table whose
+  entry z (``top_z + top_height_offset``, ``round6``) sits below the
+  effective stock top would rapid straight down THROUGH material.  The check
+  lives in :func:`validate_config` - kernel-side, so every caller (the app's
+  pasteable ``holes`` field included) inherits it; ``generate_toolpath``
+  turns those error strings into an error ``ToolpathData``, which
+  ``BaseStrategy.run`` and the app's ``_kernel_moves`` convert to the
+  ``ValueError`` the GUI shows.  What the check deliberately does NOT cover,
+  declared (F2's convention of stating both sides): (1) the effective stock
+  top is caller-trusted - it is the same ``stock_top_z`` override / BBox top
+  emission computes its planes from, so a declared surface inconsistent with
+  the BBox is not cross-checked; (2) it is a FLAT check - a hole whose XY
+  lies outside the stock footprint is refused even though its descent there
+  is through air; (3) plane offsets are trusted - a negative
+  ``retract_height_offset`` / ``clearance_height_offset`` can still aim a
+  positioning rapid into material for direct kernel callers (the app schema
+  clamps both >= 0); (4) upward travel is not checked: the end-of-hole
+  retract climbs out of the cut the cycle just made (standard canned-cycle
+  assumption).  The emitter itself stays unchecked so this port keeps
+  reproducing ``impl/drilling/emitter.py`` unchanged (the same layering as
+  the peck ceiling, which guards ``run()`` while ``cycle_body`` stays
+  faithful), and only SELECTED holes are checked - a diameter range
+  deselects a junk row before it is approached.
 
 Feeds
 -----
@@ -762,7 +787,22 @@ def resolve_config(cfg: dict[str, Any], tool: ToolDef | None = None) -> CycleCon
 
 def validate_config(cfg: dict[str, Any], stock: BBox | None,
                     tool: ToolDef | None) -> list[str]:
-    """Checks that need the resolved values - the ones generation will use."""
+    """Checks that need the resolved values - the ones generation will use.
+
+    Among them the entry-clearance guard (card ``t_e821ae89``): any
+    SELECTED hole whose entry z (``top_z + top_height_offset``, ``round6``)
+    sits below the effective stock top is refused, because the emitter
+    reaches that z with an unfed ``RAPID`` from the retract plane -
+    below the surface that rapid would descend THROUGH material.  The
+    effective stock top is the same one emission computes its planes from
+    (``stock_top_z`` override, else ``stock.max.z``), compared at ``round6``
+    precision so a table flush with the surface plans untouched; the
+    override is caller-trusted, not cross-checked against the BBox.  Only
+    selected holes are checked: a diameter range can deselect a junk row
+    before it is ever approached.  A non-finite stock top is itself a
+    validation error here - this function's contract is ``list[str]``,
+    never a raise (round-1 review finding).
+    """
     errors: list[str] = []
     if tool is None:
         errors.append("a tool is required")
@@ -805,6 +845,56 @@ def validate_config(cfg: dict[str, Any], stock: BBox | None,
                         f"(ceiling {MAX_PECK_STEPS}); the schedule is refused "
                         f"rather than expanded")
                     break
+
+    # Entry-clearance guard (t_e821ae89): cycle_body opens every hole body
+    # with ("rapid", top_z) - an UNFED rapid from the retract plane - so an
+    # entry z below the stock surface is a rapid straight down through
+    # material (measured by the t_6a5f2239 reviewer: stock top 10, a row at
+    # top_z = 2.0 -> RAPID z=2.0 at (10,10)).  Both sides are compared at
+    # round6 precision - the serializer both the planes and the entry z are
+    # written with - so float noise in a mesh-derived stock top cannot flip
+    # a flush table (the measured fixture, the EXP-013 capture and the app's
+    # demo grid all sit exactly ON the surface).  Only SELECTED holes are
+    # approached by the emitter, so only they are checked.  Upward travel is
+    # deliberately NOT checked: the end-of-hole retract climbs out of the
+    # cut the cycle just made (standard canned-cycle assumption).
+    if "stock_top_z" in cfg:
+        effective_stock_top = cfg["stock_top_z"]
+    elif stock is not None:
+        effective_stock_top = stock.max.z
+    else:
+        effective_stock_top = None               # "a stock BBox is required"
+    if effective_stock_top is not None \
+            and not math.isfinite(effective_stock_top):
+        # validate_config's contract is list[str] (and generate_toolpath's
+        # is an error ToolpathData, not a raise): a non-finite stock top is
+        # REFUSED as a validation error instead of crashing round6 inside
+        # this check - round-1 review finding, t_e821ae89.
+        errors.append(f"stock top z must be finite, got "
+                      f"{effective_stock_top!r} (stock BBox max.z / "
+                      f"stock_top_z)")
+        effective_stock_top = None
+    if effective_stock_top is not None:
+        surface = round6(effective_stock_top)
+        submerged = [h for h in select_holes(cfg["holes"], cycle)
+                     if round6(h.top_z + cycle.top_height_offset) < surface]
+        if submerged:
+            first = submerged[0]
+            entry = round6(first.top_z + cycle.top_height_offset)
+            more = (f" (+{len(submerged) - 1} more selected hole(s) below "
+                    f"the surface)" if len(submerged) > 1 else "")
+            # plain str, not :g - a refusal that prints entry z=10 BELOW
+            # surface z=10 (9.999999 under 6 significant digits) would be
+            # self-contradictory evidence (round-1 review finding).
+            errors.append(
+                f"hole (x={first.x}, y={first.y}) entry z={entry} is "
+                f"below the stock surface z={surface} (top_z="
+                f"{first.top_z} + top_height_offset="
+                f"{cycle.top_height_offset}): the entry descent is an "
+                f"unfed RAPID from the retract plane and would crash "
+                f"through material - set top_z at or above the stock "
+                f"surface{more}")
+
     if cycle.hole_diameter_minimum > cycle.hole_diameter_maximum:
         errors.append("cycle.hole_diameter_minimum must not exceed "
                       "cycle.hole_diameter_maximum")

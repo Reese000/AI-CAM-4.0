@@ -1043,6 +1043,41 @@ class TestDrillingDispatch:
                 params={"holes": []},
             )
 
+    def test_a_table_below_the_stock_surface_is_refused(self) -> None:
+        """The pasteable ``holes`` field's crash hazard (t_e821ae89).
+
+        The emitter reaches a hole's entry z with an UNFED RAPID from the
+        retract plane, so a row whose ``top_z`` sits below the stock
+        surface would rapid straight through material.  The kernel refuses
+        the table in ``validate_config`` and ``_kernel_moves`` turns the
+        error ``ToolpathData`` into this executor's uniform ``ValueError``
+        — the GUI shows a dialog instead of posting a crashing program.
+        Fixture is the reviewer's measurement: stock top 10 mm (SMALL),
+        row ``top_z = 2.0`` at (10, 10) → ``RAPID → z=2.0``.
+        """
+        with pytest.raises(ValueError, match="stock surface"):
+            EXECUTOR.execute(
+                strategy="drilling", tool=TOOL, stock_bbox=SMALL,
+                params={"holes": [{"x": 10.0, "y": 10.0, "top_z": 2.0,
+                                   "bottom_z": -5.0, "diameter": 6.0}]},
+            )
+
+    def test_a_table_flush_with_the_stock_surface_still_plans(self) -> None:
+        """``top_z == stock top`` — the measured fixture, the EXP-013
+        capture's spelling and the demo grid's — must plan untouched."""
+        toolpath = EXECUTOR.execute(
+            strategy="drilling", tool=TOOL, stock_bbox=SMALL,
+            params={"holes": [{"x": 10.0, "y": 10.0, "top_z": 10.0,
+                               "bottom_z": 0.0, "diameter": 6.0}]},
+        )
+        assert toolpath.moves
+        assert 10.0 in {m.end.z for m in toolpath.moves
+                        if m.move_type is MoveType.RAPID}, \
+            "the entry rapid lands ON the surface"
+        cuts = [m.end.z for m in toolpath.moves
+                if m.move_type is MoveType.LINEAR]
+        assert cuts == [0.0], "one plunge, flush entry, stock bottom 0"
+
     def test_kernel_diagnostics_reach_the_module_log(
         self, caplog: pytest.LogCaptureFixture,
     ) -> None:
