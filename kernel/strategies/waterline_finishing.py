@@ -72,8 +72,20 @@ order:
 Honest limits (declared, not hidden)
 ------------------------------------
 * Entry is a straight vertical plunge at the first point of each loop, priced
-  at ``tool_feedPlunge = tool_feedCutting / 3`` (``docs/ideal-cam-
-  architecture.md`` E-S6, ``par:45-46``). No ramp, no lead-in arc.
+  at ``tool_feedPlunge = tool_feedCutting / 3`` (``docs/ideal-cam-architecture.md``
+  E-S6, ``par:45-46``).  No ramp, no lead-in arc.  The approach retracts to
+  ``clearance_height``, moves in XY at that height, then comes down at the
+  loop's start point - which is ``R`` outside the section **at the cutting
+  level**.  For prismatic geometry (``profile``, stock footprint) and for any
+  mesh whose cross-section does not GROW with height that descent is through
+  air; for a mesh with an overhang or positive draft it can pass through
+  material above the entry level.  No rapid-clearance checker is implemented
+  here (follow-up, see the handoff): retract-to-clearance at the previous
+  position instead is not a fix either, because that position has the same
+  property.
+* A `finish_mode` of ``scallop`` cuts rings on the FLOOR only (``scallop_z``,
+  default the deepest level); it is a horizontal iso-offset, not a 3D
+  constant-scallop surface finishing.
 * The scallop rings walk OUTWARD from the boundary on the floor
   (``first = R``), i.e. they finish the floor around a boss; they are clipped
   by the grid extent, not by the stock outline, so a ring that reaches past
@@ -136,17 +148,25 @@ PLUNGE_FEED_DIVISOR = 3.0
 #: (``impl/waterline/parity.py:258``).
 DEFAULT_CUSP_HEIGHT_MM = 0.02
 
-#: ``scallop_rings = 0`` means "derive from the stock footprint"; this caps
-#: the derived count so a tiny ``cell`` on a large stock cannot explode.
-MAX_SCALLOP_RINGS = 256
-
 #: Hard ceiling on one section raster, in cells.  The border-margin proof
 #: (``section_bounds``) forces the grid to grow as ``part + 2 * largest
 #: level``, so a big stock finished at a fine ``cell`` can ask for a grid
-#: that would take minutes and hundreds of MB: that is a configuration error
-#: and it must surface as a message, not as a hang.  8M cells is an 8 MB
-#: ``bytearray`` and an EDT sweep of a few seconds.
-MAX_RASTER_CELLS = 8_000_000
+#: that would take minutes and gigabytes: that is a configuration error and
+#: it must surface as a message, not as a hang or a MemoryError.  The cost
+#: model at the ceiling, measured on this module: the EDT phase alone holds
+#: four O(cells) float lists (~100 bytes per cell peak) plus the field, the
+#: row transform and the section mask, and one ``waterline()`` sweep of
+#: 2.08 M cells takes ~11.7 s - so 4 M cells is roughly 400 MB transient and
+#: ~25 s per distinct level.  The reference has the same list-per-cell
+#: profile and no ceiling at all; this guard only turns the tail into an
+#: actionable message.
+MAX_RASTER_CELLS = 4_000_000
+
+#: ``scallop_rings`` bound.  ``None`` derives the count from the stock
+#: footprint (capped here); an explicit value is validated against the same
+#: ceiling, because ``offset_loops`` runs one marching-squares sweep per
+#: ring and 100 000 rings would be a hang.
+MAX_SCALLOP_RINGS = 256
 
 #: ``finish_mode`` vocabulary.
 FINISH_MODES = ("waterline", "scallop", "both")
@@ -461,15 +481,18 @@ def section_from_boundaries(
     edges = _boundary_edges(clean)
     cand = _edge_index(g, edges, radius)
     # Cell centres in ascending order: the inside test below is then exactly
-    # ``inside_polygon``'s rule (crossings STRICTLY left of x are counted),
-    # i.e. a cell belongs to the span ``(lo, hi]`` iff its centre does.
-    # Index arithmetic (``ix(lo) + 1 .. ix(hi)``) - what the reference's
+    # ``inside_polygon``'s rule.  That function toggles on every crossing
+    # STRICTLY RIGHT of x (``if x < xi + t * (xj - xi)``), so a centre lies
+    # in the span as ``lo <= centre < hi`` - which is what two
+    # ``bisect_left`` calls select.  Index arithmetic
+    # (``ix(lo) + 1 .. ix(hi)``, i.e. ``(lo, hi]``) - what the reference's
     # ``section_from_polygon`` does - is only equivalent when the polygon
     # edges land on cell boundaries; otherwise it slips one cell outside the
-    # material at ``hi`` and drops one cell inside at ``lo``.  That is
-    # invisible at gate B's ``radius = R`` (the erosion test rejects both
-    # slivers anyway) but wrong for ``radius = 0``, which is how this port
-    # builds an un-eroded finishing section.
+    # material at ``hi``, drops one cell inside at ``lo``, and disagrees with
+    # ``inside_polygon`` on both edges when a crossing lands exactly on a
+    # centre.  That is invisible at gate B's ``radius = R`` (the erosion test
+    # rejects both slivers anyway) but wrong for ``radius = 0``, which is how
+    # this port builds an un-eroded finishing section.
     centres = [g.xmin + (i + 0.5) * cell for i in range(g.w)]
     for iy in range(g.h):
         y = g.cy(iy)
@@ -477,8 +500,8 @@ def section_from_boundaries(
         base = iy * g.w
         for k in range(0, len(row) - 1, 2):
             lo, hi = row[k], row[k + 1]
-            for ix in range(bisect_right(centres, lo),
-                            bisect_right(centres, hi)):
+            for ix in range(bisect_left(centres, lo),
+                            bisect_left(centres, hi)):
                 idx = base + ix
                 found = cand.get(idx)
                 if not found:
@@ -503,6 +526,64 @@ def section_from_polygon(poly: list[tuple[float, float]], radius: float,
                          pad_radius: float | None = None) -> Raster:
     """Single-boundary form of :func:`section_from_boundaries`."""
     return section_from_boundaries([poly], radius, cell, pad_radius)
+
+
+def section_from_regions(regions, radius: float, cell: float,
+                         pad_radius: float | None = None) -> Raster:
+    """Material = the UNION of independent regions (each a list of loops).
+
+    Needed for a mesh cross-section taken exactly on a step plane: there the
+    material is "just below OR just above" the plane, and the two limits are
+    separate regions whose overlap must be OR-ed, not XOR-ed (XOR of a plate
+    and the boss standing on it is a frame - i.e. a hole under the boss,
+    which is the opposite of the truth; see
+    :meth:`WaterlineFinishingStrategy._material_boundaries`).
+
+    ``radius`` erodes only a SINGLE region exactly: the erosion of a union
+    needs the union's own boundary, which is not what "distance to every
+    region's edges" computes (a boss standing on a plate contributes an edge
+    that is interior to the union).  Multi-region therefore accepts
+    ``radius = 0`` only, which is exactly what the strategy passes - it takes
+    its allowance as a level shift instead of an erosion.
+    """
+    if len(regions) == 1:
+        return section_from_boundaries(regions[0], radius, cell, pad_radius)
+    if radius != 0:
+        raise ValueError(
+            "a union of regions supports only radius = 0 (erosion of a union "
+            "needs the union's own boundary); got %r" % (radius,))
+    clean = [list(r) for r in regions if r and len(r) >= 1
+             and all(len(loop) >= 3 for loop in r)]
+    if not clean:
+        raise ValueError("section needs at least one closed boundary of >= 3 points")
+    xs = [p[0] for region in clean for loop in region for p in loop]
+    ys = [p[1] for region in clean for loop in region for p in loop]
+    bounds = section_bounds(min(xs), min(ys), max(xs), max(ys),
+                            pad_radius if pad_radius is not None else 0.0, cell)
+    w, h = raster_shape(bounds, cell)
+    if w * h > MAX_RASTER_CELLS:
+        raise ValueError(
+            f"section raster would be {w} x {h} = {w * h} cells at "
+            f"cell_mm = {cell} (limit {MAX_RASTER_CELLS}) for a contour "
+            f"offset of {pad_radius:g} mm: raise cell_mm, lower "
+            "scallop_rings, or shrink the stock")
+    g = Raster(*bounds, cell)
+    centres = [g.xmin + (i + 0.5) * cell for i in range(g.w)]
+    for iy in range(g.h):
+        y = g.cy(iy)
+        base = iy * g.w
+        for region in clean:
+            for lo, hi in _spans(region, y):
+                for ix in range(bisect_left(centres, lo),
+                                bisect_left(centres, hi)):
+                    g.data[base + ix] = 1
+    return g
+
+
+def _spans(polys: list, y: float):
+    """``[(lo, hi), ...]`` - the even-odd spans of one region at height y."""
+    row = scanline(polys, y)
+    return [(row[k], row[k + 1]) for k in range(0, len(row) - 1, 2)]
 
 
 def section_rect(x0: float, y0: float, x1: float, y1: float, radius: float,
@@ -998,27 +1079,57 @@ def _finish_levels(top_z: float, bottom_z: float, stepdown: float) -> list[float
     return levels
 
 
-def _max_ring_extent(boundaries: list[list[tuple[float, float]]],
-                     stock: BBox) -> float:
-    """Largest distance from the material boundary to any stock corner.
+def _max_ring_extent(regions, stock: BBox, samples: int = 33) -> float:
+    """Largest distance from the material to any point of the stock (bound).
 
-    That is how far out the rings must reach to cover the whole floor: a ring
-    of offset ``d`` passes through the point ``p`` exactly when
-    ``d == distance(p, material)``, and for a boss inside the stock the
-    maximum over the stock is attained at a corner.  Each corner uses the
-    MINIMUM over the edges (distance to the nearest boundary = distance to
-    the material for a point outside it), then the maximum over corners.
+    The rings must reach far enough to cover the whole floor inside the stock,
+    i.e. ``max over p in stock of distance(p, material)``.  That maximum is
+    NOT attained at a stock corner in general: it is a convex function only
+    for convex material (a corner rule is therefore wrong for a pocket - the
+    maximum sits at the bottom of the void - and for a non-convex boss, where
+    it sits on the medial axis).  Instead this samples the stock on a
+    ``samples x samples`` grid (corners included) and adds HALF the sample
+    diagonal: ``distance(., material)`` is 1-Lipschitz, every stock point
+    lies within half a sample diagonal of a sample, so
+
+        true max <= sampled max + hypot(dx, dy) / 2
+
+    is a proven upper bound - the derived ring count can over-cover by at
+    most half a sample cell and can never under-cover.  Points inside the
+    material contribute 0 (a ring must not start inside the solid).
     """
-    corners = ((stock.min.x, stock.min.y), (stock.min.x, stock.max.y),
-               (stock.max.x, stock.min.y), (stock.max.x, stock.max.y))
-    edges = _boundary_edges(boundaries)
+    flat = [loop for region in regions for loop in region]
+    if not flat:
+        raise ValueError("ring extent needs a material boundary")
+    edges = _boundary_edges(flat)
+    x0, y0 = stock.min.x, stock.min.y
+    x1, y1 = stock.max.x, stock.max.y
+    dx = (x1 - x0) / max(1, samples - 1)
+    dy = (y1 - y0) / max(1, samples - 1)
     worst = 0.0
-    for (cx, cy) in corners:
-        nearest = min(point_segment_distance(cx, cy, e[0], e[1], e[2], e[3])
-                      for e in edges)
-        if nearest > worst:
-            worst = nearest
-    return worst
+    for i in range(samples):
+        x = x0 + i * dx
+        for j in range(samples):
+            y = y0 + j * dy
+            if _inside_regions(regions, x, y):
+                continue                    # inside the material: distance 0
+            near = min(point_segment_distance(x, y, e[0], e[1], e[2], e[3])
+                       for e in edges)
+            if near > worst:
+                worst = near
+    return worst + 0.5 * math.hypot(dx, dy)
+
+
+def _inside_regions(regions, x: float, y: float) -> bool:
+    """Even-odd inside ANY region (the union the section builder rasterises)."""
+    for region in regions:
+        parity = 0
+        for loop in region:
+            if inside_polygon(loop, x, y):
+                parity ^= 1
+        if parity:
+            return True
+    return False
 
 
 def plan_finishes(
@@ -1038,10 +1149,13 @@ def plan_finishes(
     """Compute every finishing pass for one material description.
 
     Args:
-        boundaries_at: ``z -> [closed XY loop, ...]``; material = odd number
-            of containing loops (even-odd), so a hole is just a second loop.
-            A prismatic part simply ignores ``z``; a mesh part returns its
-            cross-section at that height.
+        boundaries_at: ``z -> [region, ...]`` where a region is
+            ``[closed XY loop, ...]``.  Material = UNION of the regions,
+            even-odd inside each (so a hole is a second loop).  A prismatic
+            part ignores ``z`` and returns one region; a mesh part returns
+            the material "just below OR just above" ``z`` as two regions when
+            ``z`` lands on a step plane - see
+            :meth:`WaterlineFinishingStrategy._material_boundaries`.
         z_levels: cutting heights, descending.
         tool_radius: ``R``; the waterline is the level set
             ``distance == R + stock_to_leave_mm`` of the material (the
@@ -1103,7 +1217,9 @@ def plan_finishes(
         if ring_count is None:
             if stock is None:
                 raise ValueError("deriving the ring count needs a stock footprint")
-            extent = _max_ring_extent(boundaries_at(z_levels[-1]), stock)
+            # The rings are cut at the DEEPEST level, so the floor they have
+            # to cover is measured there.
+            extent = _max_ring_extent(boundaries_at(min(z_levels)), stock)
             count = int((extent - first) // p) + 1 if extent > first else 1
             count = max(1, min(MAX_SCALLOP_RINGS, count))
         else:
@@ -1130,35 +1246,45 @@ def plan_finishes(
     pad_radius = max_level
 
     section_cache: dict[tuple, Raster] = {}
+    # The distance field is the expensive part (EDT + snap + marching
+    # squares), and for a prismatic part every level yields the same section
+    # AND the same level -> the same loops, so the result is cached too.
+    waterline_cache: dict[tuple, list] = {}
 
-    def section_at(z: float) -> Raster:
+    def section_and_key(z: float) -> tuple[tuple, Raster]:
         # Keyed by the BOUNDARIES, not by z: a prismatic part has the same
         # cross-section at every level, and rasterising it once per level is
         # pure waste (the mesh path still recomputes its section per z).
-        boundaries = boundaries_at(z)
-        key = tuple(tuple(loop) for loop in boundaries)
+        regions = boundaries_at(z)
+        key = tuple(tuple(tuple(loop) for loop in region) for region in regions)
         hit = section_cache.get(key)
         if hit is None:
-            hit = section_from_boundaries(boundaries, 0.0, cell, pad_radius)
+            hit = section_from_regions(regions, 0.0, cell, pad_radius)
             section_cache[key] = hit
-        return hit
+        return key, hit
 
     passes: list[FinishPass] = []
     if mode in ("waterline", "both"):
         for z in z_levels:
-            grid = section_at(z)
+            key, grid = section_and_key(z)
+            cache_key = (key, waterline_level)
+            loops = waterline_cache.get(cache_key)
+            if loops is None:
+                loops = waterline(grid, waterline_level)
+                waterline_cache[cache_key] = loops
             passes.append(FinishPass("waterline", float(z), waterline_level,
-                                     waterline(grid, waterline_level)))
+                                     loops))
     if mode in ("scallop", "both"):
         floor = min(float(v) for v in z_levels)
         z = float(floor if scallop_z is None else scallop_z)
-        grid = section_at(z)
+        _, grid = section_and_key(z)
         for d, loops in offset_loops(grid, ring_distances):
             passes.append(FinishPass("scallop", z, d, loops))
 
     # Deepest last: z descending, so the entry height never has to climb.
     passes.sort(key=lambda fp: -fp.z)
     info["sections"] = len(section_cache)
+    info["waterline_fields"] = len(waterline_cache)
     info["passes"] = len(passes)
     info["loops"] = sum(len(fp.loops) for fp in passes)
     info["loop_points"] = sum(fp.points for fp in passes)
@@ -1368,9 +1494,16 @@ def _validate_config(cfg: dict[str, Any], stock: BBox | None,
                           f"{radius}, got {first!r}")
 
     rings = cfg.get("scallop_rings")
-    if rings is not None and rings < 1:
-        errors.append(f"scallop_rings must be >= 1 (or null to derive it), "
-                      f"got {rings!r}")
+    if rings is not None and not 1 <= rings <= MAX_SCALLOP_RINGS:
+        errors.append(
+            f"scallop_rings must be in [1, {MAX_SCALLOP_RINGS}] (or null to "
+            f"derive it from the stock footprint), got {rings!r}")
+
+    scallop_z = cfg.get("scallop_z")
+    if scallop_z is not None and top is not None and bottom is not None \
+            and not bottom <= scallop_z <= top:
+        errors.append(f"scallop_z {scallop_z} must lie in "
+                      f"[{bottom}, {top}]")
 
     for z in cfg.get("finish_levels") or []:
         if top is not None and bottom is not None and not bottom <= z <= top:
@@ -1498,7 +1631,7 @@ class WaterlineFinishingStrategy(BaseStrategy):
 
         source_seen: dict[str, str] = {}
 
-        def boundaries_at(z: float) -> list[list[tuple[float, float]]]:
+        def boundaries_at(z: float) -> list:
             resolved, label = self._material_boundaries(cfg, stock, z)
             source_seen["v"] = label
             return resolved
@@ -1560,9 +1693,10 @@ class WaterlineFinishingStrategy(BaseStrategy):
                 _rapid(Vec3(x0, y0, z_prev))
                 if fp.z < z_prev - Z_TOLERANCE_MM:
                     # Straight vertical entry, priced at tool_feedPlunge.
+                    # (fp.z can never exceed z_prev: passes are sorted
+                    # descending and every level is validated inside
+                    # [bottom_of_stock, top_of_stock].)
                     _cut(Vec3(x0, y0, fp.z), feed_plunge)
-                elif fp.z > z_prev + Z_TOLERANCE_MM:
-                    _rapid(start)
                 pos = start
                 closed = (math.hypot(loop[-1][0] - loop[0][0],
                                      loop[-1][1] - loop[0][1]) > 1e-9)
@@ -1616,17 +1750,36 @@ class WaterlineFinishingStrategy(BaseStrategy):
     # ------------------------------------------------------------------
     @staticmethod
     def _material_boundaries(cfg: dict[str, Any], stock: BBox, z: float
-                             ) -> tuple[list[list[tuple[float, float]]], str]:
-        """Material boundaries at height ``z`` (mesh sections vary with z)."""
+                             ) -> tuple[list, str]:
+        """Material REGIONS at height ``z``.
+
+        Returns ``(regions, source)`` where ``regions = [region, ...]``, a
+        region is ``[loop, ...]`` and a loop is ``[(x, y), ...]``; the
+        material is the UNION of the regions, even-odd inside each.
+
+        * ``profile`` / stock footprint: one region, prismatic in z.
+        * ``mesh``: the cross-section of the CLOSED solid at exactly ``z`` is
+          ``(material just below z) OR (material just above z)``.
+          ``mesh_section_loops`` reports the curves where the model's
+          boundary meets the plane, and on a STEP plane - a boss standing on
+          a plate - that is the plate's outline AND the boss's outline.
+          Taking them as one even-odd region would punch a hole under the
+          boss (a frame), and taking only one side would drop the other
+          body; returning both limits as separate regions and unioning them
+          is the truth.  ``math.nextafter`` moves each sample off the plane
+          by one ULP, so no other feature can be crossed.
+        """
         profile = cfg.get("profile")
         if profile is not None:
-            return [list(profile)], "profile"
+            return [[list(profile)]], "profile"
         mesh = cfg.get("mesh")
         if mesh is not None:
-            loops = mesh_section_loops(mesh, z)
-            if not loops:
+            below = mesh_section_loops(mesh, math.nextafter(z, -math.inf))
+            above = mesh_section_loops(mesh, math.nextafter(z, math.inf))
+            regions = [r for r in (below, above) if r]
+            if not regions:
                 raise ValueError(f"the mesh has no cross-section at z = {z}")
-            return loops, "mesh"
+            return regions, "mesh"
         rect = [(stock.min.x, stock.min.y), (stock.max.x, stock.min.y),
                 (stock.max.x, stock.max.y), (stock.min.x, stock.max.y)]
-        return [rect], "stock"
+        return [[rect]], "stock"

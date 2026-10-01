@@ -123,6 +123,18 @@ def quad(a, b, c, d):
     return [(a, b, c), (a, c, d)]
 
 
+def merge_meshes(*meshes):
+    """Concatenate triangle soups into the dict shape parse_stl returns."""
+    verts: list = []
+    faces: list = []
+    for mesh in meshes:
+        offset = len(verts)
+        verts.extend(tuple(v) for v in mesh["vertices"])
+        faces.extend((a + offset, b + offset, c + offset)
+                     for a, b, c in mesh["faces"])
+    return {"vertices": verts, "faces": faces}
+
+
 def frame_section(x0, y0, x1, y1, radius, cell):
     """Solid EVERYWHERE except an axis-aligned rectangular void.
 
@@ -233,10 +245,11 @@ class TestSectionBounds:
 
     def test_material_bbox_lands_on_cell_boundaries(self):
         # Rounding the pad out to whole cells keeps the lattice on the
-        # material, so an axis-aligned mask is exact, not half a cell off.
+        # material, so an axis-aligned mask is exact rather than half a cell
+        # off (impl/waterline/section.py whole_cells).
         x0, y0, _, _ = wlf.section_bounds(1.0, 2.0, 9.0, 7.0, R, CELL)
-        assert round((1.0 - x0) / CELL) == pytest.approx((1.0 - x0) / CELL)
         assert abs((1.0 - x0) / CELL - round((1.0 - x0) / CELL)) < 1e-6
+        assert abs((2.0 - y0) / CELL - round((2.0 - y0) / CELL)) < 1e-6
 
     def test_negative_radius_is_rejected(self):
         with pytest.raises(ValueError):
@@ -355,10 +368,10 @@ class TestSections:
         boundaries.
 
         The index-arithmetic span the reference's ``section_from_polygon``
-        uses (``ix(lo) + 1 .. ix(hi)``) is only equivalent to that rule on
-        cell boundaries: off them it admits one cell outside the material at
-        ``hi`` and drops one cell inside at ``lo``.  At gate B's
-        ``radius = R`` the erosion test rejects both slivers, so the
+        uses (``ix(lo) + 1 .. ix(hi)``, i.e. ``(lo, hi]``) is only equivalent
+        to that rule on cell boundaries: off them it admits one cell outside
+        the material at ``hi`` and drops one cell inside at ``lo``.  At gate
+        B's ``radius = R`` the erosion test rejects both slivers, so the
         reference never sees it; an un-eroded finishing section does, and the
         sliver shows up as a full-cell error on the finished contour.
         """
@@ -374,6 +387,52 @@ class TestSections:
                     mismatches += 1
         assert grid.count() > 1000
         assert mismatches == 0
+
+    @pytest.mark.parametrize("x0,width", [
+        (0.0, 1.0),      # no edge on a centre
+        (0.0, 1.125),    # the RIGHT edge lands exactly on a cell centre
+        (0.125, 1.0),    # both vertical edges on cell boundaries
+        (0.125, 1.125),  # right edge on a centre, left on a boundary
+    ])
+    def test_fill_is_exact_when_an_edge_lands_on_a_cell_centre(self, x0, width):
+        """The half-open tie rule, pinned directly.
+
+        ``inside_polygon`` toggles on crossings STRICTLY RIGHT of x, so a
+        centre exactly on the left edge is INSIDE and one exactly on the
+        right edge is OUTSIDE: the span is ``[lo, hi)``.  Selecting
+        ``(lo, hi]`` instead (or the reference's index arithmetic) flips
+        both of those cells - one column gained, one column lost.
+        """
+        cell = 0.25
+        poly = [(x0, 0.0), (x0 + width, 0.0), (x0 + width, 0.9), (x0, 0.9)]
+        grid = wlf.section_from_polygon(poly, 0.0, cell, 1.0)
+        mismatches = []
+        for iy in range(grid.h):
+            y = grid.cy(iy)
+            base = iy * grid.w
+            for ix in range(grid.w):
+                inside = wlf.inside_polygon(poly, grid.cx(ix), y)
+                if inside != (grid.data[base + ix] == 1):
+                    mismatches.append((grid.cx(ix), y, inside))
+        assert mismatches == []
+
+    def test_the_tie_case_really_has_a_centre_on_the_material_edge(self):
+        """Prove the tie exists - otherwise the case above proves nothing.
+
+        ``section_bounds`` rounds the PAD out to whole cells, so the material
+        bbox MIN always lands on a cell BOUNDARY; a tie can only come from a
+        material size that is a half-cell multiple, which pushes the far edge
+        onto the next centre.  1.125 mm = 4.5 cells at cell 0.25 does that.
+        """
+        cell = 0.25
+        poly = [(0.0, 0.0), (1.125, 0.0), (1.125, 0.9), (0.0, 0.9)]
+        grid = wlf.section_from_polygon(poly, 0.0, cell, 1.0)
+        on_edge = [ix for ix in range(grid.w)
+                   if abs(grid.cx(ix) - 1.125) < 1e-12]
+        assert on_edge, "the right edge should sit on a cell centre"
+        # The centre exactly on the right edge is OUTSIDE (half-open rule).
+        assert wlf.inside_polygon(poly, grid.cx(on_edge[0]), 0.5) is False
+        assert grid.data[grid.index(on_edge[0], grid.iy(0.5))] == 0
 
     def test_scanline_pairs_crossings_in_order(self):
         square = [(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)]
@@ -729,6 +788,58 @@ class TestMeshSections:
         with pytest.raises(ValueError):
             wlf.mesh_section_loops({"vertices": []}, 0.0)
 
+    def test_a_step_plane_section_is_the_union_not_a_frame(self):
+        """The step-plane trap, pinned at the section level.
+
+        Plate ``0..60 x 0..40 z 0..4`` with a boss ``20..40 x 15..25 z 4..8``:
+        at exactly ``z = 4`` the plane carries the plate's outline AND the
+        boss's outline.  Even-odd over both is a FRAME - it declares the
+        boss's footprint to be a void, which is the opposite of the truth
+        (the plate is under it).  The material is the UNION of the section
+        just below and the section just above, so the boss footprint stays
+        solid and the waterline stays ONE loop.
+        """
+        mesh = merge_meshes(box_mesh((0.0, 0.0, 0.0), (60.0, 40.0, 4.0)),
+                            box_mesh((20.0, 15.0, 4.0), (40.0, 25.0, 8.0)))
+        stock = rect_stock(0.0, 0.0, 60.0, 40.0, 0.0, 8.0)
+        regions, source = wlf.WaterlineFinishingStrategy._material_boundaries(
+            {"mesh": mesh}, stock, 4.0)
+        assert source == "mesh"
+        assert len(regions) == 2          # one limit from each side of z
+        grid = wlf.section_from_regions(regions, 0.0, CELL, R)
+        assert grid.get(30.0, 20.0) is True    # boss footprint: material
+        assert grid.get(5.0, 5.0) is True      # plate around it: material
+        assert grid.get(62.0, 20.0) is False    # pad, outside the plate
+        assert len(wlf.waterline(grid, R)) == 1
+
+    def test_a_step_plane_does_not_gouge_through_the_strategy(self):
+        """End-to-end form of the same trap: no cut may enter the boss."""
+        mesh = merge_meshes(box_mesh((0.0, 0.0, 0.0), (60.0, 40.0, 4.0)),
+                            box_mesh((20.0, 15.0, 4.0), (40.0, 25.0, 8.0)))
+        op = operation(mesh=mesh, finish_levels=[4.0], finish_mode="waterline",
+                       _top=8.0, _bottom=0.0,
+                       _stock=rect_stock(0.0, 0.0, 60.0, 40.0, 0.0, 8.0))
+        op.extra_args.pop("profile")
+        tp = get_strategy("waterline_finishing").run(op)
+        assert "error" not in tp.params
+        assert tp.params["waterline_loops"] == 1
+        cuts = [(m.end.x, m.end.y) for m in tp.moves
+                if m.move_type is MoveType.LINEAR]
+        inside_boss = [p for p in cuts if 20.0 < p[0] < 40.0
+                       and 15.0 < p[1] < 25.0]
+        assert inside_boss == [], f"contour ran through the boss: {inside_boss[:3]}"
+
+    def test_multi_region_section_rejects_an_erosion(self):
+        """Union erosion would need the union's own boundary - declared."""
+        outer = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]
+        inner = [(3.0, 3.0), (7.0, 3.0), (7.0, 7.0), (3.0, 7.0)]
+        with pytest.raises(ValueError) as exc:
+            wlf.section_from_regions([[outer], [inner]], R, CELL, R)
+        assert "radius = 0" in str(exc.value)
+        # ...and the single-region path still erodes exactly.
+        assert wlf.section_from_regions([[outer]], R, CELL, R).count() < \
+            wlf.section_from_regions([[outer]], 0.0, CELL, R).count()
+
     def test_plane_point_is_canonicalised_by_vertex_index(self):
         a, b = (0.0, 0.0, 0.0), (4.0, 0.0, 8.0)
         forward = wlf._plane_point(a, b, 0.0, 8.0, 1, 2, 4.0)
@@ -837,6 +948,34 @@ class TestValidation:
                       ring_stepover=2.0 * R + 0.1))
         assert any("ring_stepover" in e for e in errors)
 
+    def test_scallop_rings_outside_the_ceiling_is_reported(self):
+        # An explicit value used to bypass MAX_SCALLOP_RINGS and reach
+        # offset_loops as N marching-squares sweeps - a hang, not an error.
+        for bad in (0, -1, wlf.MAX_SCALLOP_RINGS + 1, 100000):
+            errors = get_strategy("waterline_finishing").validate_params(
+                operation(finish_mode="scallop", scallop_rings=bad))
+            assert any("scallop_rings" in e for e in errors), bad
+        assert get_strategy("waterline_finishing").validate_params(
+            operation(finish_mode="scallop", scallop_rings=3)) == []
+
+    def test_scallop_z_outside_the_stock_is_reported(self):
+        # scallop_z feeds a mesh section lookup and the pass sort, so an
+        # unvalidated value could put a pass above the stock top.
+        errors = get_strategy("waterline_finishing").validate_params(
+            operation(finish_mode="scallop", scallop_z=99.0, _top=8.0,
+                     _bottom=0.0))
+        assert any("scallop_z" in e for e in errors)
+        assert get_strategy("waterline_finishing").validate_params(
+            operation(finish_mode="scallop", scallop_z=0.0, _top=8.0,
+                     _bottom=0.0)) == []
+
+    def test_scallop_z_outside_the_stock_returns_an_error_toolpath(self):
+        tp = get_strategy("waterline_finishing").generate_toolpath(
+            rect_stock(), make_tool(), finish_mode="scallop", scallop_z=99.0,
+            top_of_stock=0.0, bottom_of_stock=0.0)
+        assert "scallop_z" in tp.params["error"]
+        assert tp.moves == []
+
     def test_top_below_bottom_is_reported(self):
         op = operation()
         op.extra_args["top_of_stock"] = -5.0
@@ -874,7 +1013,7 @@ class TestValidation:
 class TestPlanFinishes:
     def test_waterline_mode_plans_one_pass_per_level(self):
         passes, info = wlf.plan_finishes(
-            boundaries_at=lambda z: [RECT],
+            boundaries_at=lambda z: [[RECT]],
             z_levels=[10.0, 5.0, 0.0],
             tool_radius=R,
             cell=CELL,
@@ -886,7 +1025,7 @@ class TestPlanFinishes:
 
     def test_scallop_mode_plans_one_pass_per_ring_at_the_floor(self):
         passes, info = wlf.plan_finishes(
-            boundaries_at=lambda z: [RECT],
+            boundaries_at=lambda z: [[RECT]],
             z_levels=[10.0, 5.0, 0.0],
             tool_radius=R,
             cell=CELL,
@@ -902,7 +1041,7 @@ class TestPlanFinishes:
 
     def test_both_mode_mixes_the_two_and_sorts_by_descending_z(self):
         passes, info = wlf.plan_finishes(
-            boundaries_at=lambda z: [RECT],
+            boundaries_at=lambda z: [[RECT]],
             z_levels=[10.0, 0.0],
             tool_radius=R,
             cell=CELL,
@@ -917,7 +1056,7 @@ class TestPlanFinishes:
 
     def test_explicit_ring_stepover_drives_the_plan(self):
         _, info = wlf.plan_finishes(
-            boundaries_at=lambda z: [RECT],
+            boundaries_at=lambda z: [[RECT]],
             z_levels=[0.0],
             tool_radius=R,
             cell=CELL,
@@ -934,12 +1073,17 @@ class TestPlanFinishes:
 
     def test_ring_count_is_derived_from_the_stock_footprint(self):
         # 24 x 14 stock around the 16 x 8 profile: the floor reaches 5 mm
-        # from the wall at the far corner, which at p = 0.5024 is 7 rings.
+        # from the wall at the farthest corner (convex material, so the
+        # maximum really is there), and the sampled bound adds at most half
+        # a sample cell on top.
         stock = rect_stock(-12.0, -7.0, 12.0, 7.0)
-        extent = wlf._max_ring_extent([RECT], stock)
-        assert extent == pytest.approx(math.hypot(4.0, 3.0))
+        true_extent = math.hypot(4.0, 3.0)
+        extent = wlf._max_ring_extent([[RECT]], stock, samples=33)
+        dx, dy = 24.0 / 32, 14.0 / 32
+        assert extent >= true_extent - 1e-12            # never under-cover
+        assert extent <= true_extent + 0.5 * math.hypot(dx, dy) + 1e-9
         _, info = wlf.plan_finishes(
-            boundaries_at=lambda z: [RECT],
+            boundaries_at=lambda z: [[RECT]],
             z_levels=[0.0],
             tool_radius=R,
             cell=CELL,
@@ -951,6 +1095,28 @@ class TestPlanFinishes:
         p = wlf.stepover_for_cusp(0.02, R)
         assert info["rings"] == int((extent - R) // p) + 1
         assert 2 <= info["rings"] <= wlf.MAX_SCALLOP_RINGS
+
+    def test_ring_extent_reaches_the_bottom_of_a_pocket(self):
+        """A corner rule returns 0 here; the rings would never enter the void.
+
+        Material = frame (outer 40 x 30 with a 10 x 6 hole); the deepest
+        floor point inside the stock is the hole centre, 3 mm from the wall.
+        """
+        outer = [(-20.0, -15.0), (20.0, -15.0), (20.0, 15.0), (-20.0, 15.0)]
+        inner = [(-5.0, -3.0), (5.0, -3.0), (5.0, 3.0), (-5.0, 3.0)]
+        stock = rect_stock(-20.0, -15.0, 20.0, 15.0)
+        extent = wlf._max_ring_extent([[outer, inner]], stock, samples=33)
+        assert extent >= 3.0, "the pocket bottom is 3 mm from the wall"
+        assert extent <= 3.0 + 0.5 * math.hypot(40 / 32, 30 / 32) + 1e-9
+
+    def test_ring_extent_reaches_into_a_u_shaped_notch(self):
+        """Every stock corner lies ON this material, so a corner rule says 0
+        while the notch mouth is 1 mm from both walls."""
+        u = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (6.0, 10.0),
+             (6.0, 4.0), (4.0, 4.0), (4.0, 10.0), (0.0, 10.0)]
+        stock = rect_stock(0.0, 0.0, 10.0, 10.0)
+        extent = wlf._max_ring_extent([[u]], stock, samples=33)
+        assert extent >= 1.0
 
     def test_a_raster_that_would_exceed_the_cell_ceiling_is_rejected(self):
         # part + 2 * (stock extent) at cell 0.05 would be a huge grid; the
@@ -971,15 +1137,15 @@ class TestPlanFinishes:
 
     def test_unknown_mode_raises(self):
         with pytest.raises(ValueError):
-            wlf.plan_finishes(lambda z: [RECT], [0.0], R, CELL, mode="nope")
+            wlf.plan_finishes(lambda z: [[RECT]], [0.0], R, CELL, mode="nope")
 
     def test_non_positive_cell_raises(self):
         with pytest.raises(ValueError):
-            wlf.plan_finishes(lambda z: [RECT], [0.0], R, 0.0)
+            wlf.plan_finishes(lambda z: [[RECT]], [0.0], R, 0.0)
 
     def test_deriving_rings_without_a_stock_raises(self):
         with pytest.raises(ValueError):
-            wlf.plan_finishes(lambda z: [RECT], [0.0], R, CELL,
+            wlf.plan_finishes(lambda z: [[RECT]], [0.0], R, CELL,
                               mode="scallop", ring_count=None, stock=None)
 
     def test_a_mesh_boundaries_callable_may_vary_with_z(self):
@@ -987,7 +1153,7 @@ class TestPlanFinishes:
 
         def at(z):
             seen.append(z)
-            return [RECT]
+            return [[RECT]]
 
         wlf.plan_finishes(at, [10.0, 0.0], R, CELL, mode="waterline")
         assert sorted(set(seen)) == [0.0, 10.0]
