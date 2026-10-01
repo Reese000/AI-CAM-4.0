@@ -95,8 +95,10 @@ Honest limits (declared, not hidden)
   uniform ``stepdown`` ladder, and a mesh wall is a boundary of the section
   only at heights where material STARTS.  A wall whose base sits between two
   levels is first traced at the first level ABOVE its base, so the band
-  ``[wall base, that level)`` - up to one full stepdown - can be left uncut
-  at its foot.  Cutting the section of the material in ``[z, z + stepdown)``
+  ``[wall base, that level)`` - up to one ladder step, i.e. the ``stepdown``
+  for generated levels or, when the caller supplies ``finish_levels``
+  itself, the gap between its entries - can be left uncut at its foot.
+  Cutting the section of the material in ``[z, z + stepdown)``
   instead would put the entry plunge through the floor below a boss (the
   overhang hazard declared above), so this is DECLARED, not patched: it is
   the standard waterline step-plane limitation, and the reference's
@@ -1159,6 +1161,22 @@ def _inside_regions(regions, x: float, y: float) -> bool:
     return False
 
 
+def _scallop_plane(z_levels: list[float], scallop_z: float | None) -> float:
+    """Height the constant-scallop rings are cut at.
+
+    The DEEPEST level, unless the caller pins ``scallop_z``.  One helper for
+    both the ring-COUNT measurement and the ring SECTION, so the floor that
+    is measured and the floor that is cut can never disagree (review round-2
+    MINOR: the count was read at ``min(z_levels)`` while the rings were cut
+    at ``scallop_z`` - two different materials on a mesh as soon as a feature
+    starts between the two heights).  Both call sites sit inside the scallop
+    guard of :func:`plan_finishes`, so a waterline-only plan evaluates
+    neither ``min(z_levels)`` nor ``scallop_z``.
+    """
+    return (min(float(v) for v in z_levels) if scallop_z is None
+            else float(scallop_z))
+
+
 def plan_finishes(
     boundaries_at,
     z_levels: list[float],
@@ -1226,16 +1244,19 @@ def plan_finishes(
 
     ring_distances: list[float] = []
     p: float | None = None
-    # Where the scallop rings are CUT: the deepest level unless the caller
-    # pins ``scallop_z``.  Resolved ONCE and used for both the ring COUNT
-    # below and the ring SECTION at the end, because on a mesh those are two
-    # different materials as soon as a feature starts between the two heights
-    # (same defect class as review round-2 finding n5, where ``z_levels[-1]``
-    # was read for ``min(z_levels)``: measuring the floor at the deepest level
-    # while cutting at ``scallop_z`` repeats it one level up).
-    scallop_plane = (min(float(v) for v in z_levels)
-                     if scallop_z is None else float(scallop_z))
     if mode in ("scallop", "both"):
+        # Where the scallop rings are CUT: the deepest level unless the caller
+        # pins ``scallop_z``.  ``_scallop_plane`` is called here AND for the
+        # ring SECTION at the end, so the count and the cut always read the
+        # same height - and both calls sit inside the scallop guard, so a
+        # waterline-only plan evaluates neither ``min(z_levels)`` nor
+        # ``scallop_z``, exactly as before this fix.  On a mesh the two
+        # heights are two different materials as soon as a feature starts
+        # between them (same defect class as review round-2 finding n5, where
+        # ``z_levels[-1]`` was read for ``min(z_levels)``: measuring the floor
+        # at the deepest level while cutting at ``scallop_z`` repeats it one
+        # level up).
+        scallop_plane = _scallop_plane(z_levels, scallop_z)
         if cusp_height_mm is not None:
             p = stepover_for_cusp(cusp_height_mm, tool_radius)
             info["cusp_height_target_mm"] = cusp_height_mm
@@ -1314,9 +1335,13 @@ def plan_finishes(
             passes.append(FinishPass("waterline", float(z), waterline_level,
                                      loops))
     if mode in ("scallop", "both"):
-        _, grid = section_and_key(scallop_plane)
+        # Same helper as the ring count above, so the cut height and the
+        # measured floor always agree; the call sits inside this guard, so a
+        # waterline-only plan still evaluates neither value.
+        plane = _scallop_plane(z_levels, scallop_z)
+        _, grid = section_and_key(plane)
         for d, loops in offset_loops(grid, ring_distances):
-            passes.append(FinishPass("scallop", scallop_plane, d, loops))
+            passes.append(FinishPass("scallop", plane, d, loops))
 
     # Deepest last: z descending, so the entry height never has to climb.
     passes.sort(key=lambda fp: -fp.z)
