@@ -788,16 +788,27 @@ class TestMeshSections:
         with pytest.raises(ValueError):
             wlf.mesh_section_loops({"vertices": []}, 0.0)
 
-    def test_a_step_plane_section_is_the_union_not_a_frame(self):
-        """The step-plane trap, pinned at the section level.
+    def test_a_step_plane_section_is_the_material_that_starts_at_z(self):
+        """The step-plane rule, pinned at the section level (round 3).
 
         Plate ``0..60 x 0..40 z 0..4`` with a boss ``20..40 x 15..25 z 4..8``:
         at exactly ``z = 4`` the plane carries the plate's outline AND the
-        boss's outline.  Even-odd over both is a FRAME - it declares the
-        boss's footprint to be a void, which is the opposite of the truth
-        (the plate is under it).  The material is the UNION of the section
-        just below and the section just above, so the boss footprint stays
-        solid and the waterline stays ONE loop.
+        boss's outline, so the sample taken ON the plane is ambiguous.  Two
+        rules were tried and both were wrong:
+
+        * round 1 took the exact-plane even-odd set - the two outlines XOR
+          into a FRAME, the boss footprint becomes a void and the contour
+          cuts through it (still guarded end-to-end by
+          ``test_a_step_plane_does_not_gouge_through_the_strategy``);
+        * round 2 unioned the section just below with the section just above
+          - the union is the plate outline, so the boss wall, the only
+          surface this level has left, is missing from the section (measured
+          in ``test_a_step_plane_union_swallows_the_feature``).
+
+        A tip at ``z`` cuts UPWARD from ``z``, so what the pass at ``z``
+        finishes is the material that STARTS at ``z``: ONE region, the
+        section just above the plane (``_material_boundaries`` falls back to
+        the section just below only when nothing starts there).
         """
         mesh = merge_meshes(box_mesh((0.0, 0.0, 0.0), (60.0, 40.0, 4.0)),
                             box_mesh((20.0, 15.0, 4.0), (40.0, 25.0, 8.0)))
@@ -805,12 +816,57 @@ class TestMeshSections:
         regions, source = wlf.WaterlineFinishingStrategy._material_boundaries(
             {"mesh": mesh}, stock, 4.0)
         assert source == "mesh"
-        assert len(regions) == 2          # one limit from each side of z
+        assert len(regions) == 1          # ONE limit, not one per side of z
         grid = wlf.section_from_regions(regions, 0.0, CELL, R)
-        assert grid.get(30.0, 20.0) is True    # boss footprint: material
-        assert grid.get(5.0, 5.0) is True      # plate around it: material
-        assert grid.get(62.0, 20.0) is False    # pad, outside the plate
-        assert len(wlf.waterline(grid, R)) == 1
+        assert grid.get(30.0, 20.0) is True     # boss footprint: material
+        loops = wlf.waterline(grid, R)
+        assert len(loops) == 1
+        xs = [p[0] for p in loops[0]]
+        ys = [p[1] for p in loops[0]]
+        # The contour sits R outside the BOSS.  Under round 2's union rule it
+        # would sit R outside the PLATE instead (-R / 60+R / -R / 40+R).
+        assert min(xs) == pytest.approx(20.0 - R, abs=ANALYTIC_DEV)
+        assert max(xs) == pytest.approx(40.0 + R, abs=ANALYTIC_DEV)
+        assert min(ys) == pytest.approx(15.0 - R, abs=ANALYTIC_DEV)
+        assert max(ys) == pytest.approx(25.0 + R, abs=ANALYTIC_DEV)
+
+    def test_a_step_plane_union_swallows_the_feature(self):
+        """Round 2's union rule, measured rather than argued.
+
+        Same fixture, same ``z = 4``: feed BOTH limits to
+        ``section_from_regions`` as round 2 did and the union is the plate
+        outline - the boss lies inside the plate, and OR-ing a region into
+        its own superset adds nothing.  The waterline of that union never
+        comes within R of the boss, i.e. the only surface this level has
+        left to cut is not in the toolpath.  The strategy's own rule keeps
+        that surface; the two grids are the same call with one argument
+        changed, so the difference below is the rule and nothing else.
+        """
+        mesh = merge_meshes(box_mesh((0.0, 0.0, 0.0), (60.0, 40.0, 4.0)),
+                            box_mesh((20.0, 15.0, 4.0), (40.0, 25.0, 8.0)))
+        stock = rect_stock(0.0, 0.0, 60.0, 40.0, 0.0, 8.0)
+        below = wlf.mesh_section_loops(mesh, math.nextafter(4.0, -math.inf))
+        above = wlf.mesh_section_loops(mesh, math.nextafter(4.0, math.inf))
+        assert len(below) == 1 and len(above) == 1   # both limits exist
+
+        union = wlf.section_from_regions([below, above], 0.0, CELL, R)
+        union_pts = flat(wlf.waterline(union, R))
+        assert union_pts, "the union produced no contour at all"
+        assert min(p[0] for p in union_pts) == pytest.approx(-R,
+                                                             abs=ANALYTIC_DEV)
+        swallowed = [p for p in union_pts
+                     if 20.0 - R <= p[0] <= 40.0 + R
+                     and 15.0 - R <= p[1] <= 25.0 + R]
+        assert swallowed == [], "the union still traced the boss?!"
+
+        regions, _ = wlf.WaterlineFinishingStrategy._material_boundaries(
+            {"mesh": mesh}, stock, 4.0)
+        kept = flat(wlf.waterline(
+            wlf.section_from_regions(regions, 0.0, CELL, R), R))
+        assert [p for p in kept
+                if 20.0 - R <= p[0] <= 40.0 + R
+                and 15.0 - R <= p[1] <= 25.0 + R], \
+            "the strategy's own rule dropped the boss too"
 
     def test_a_step_plane_does_not_gouge_through_the_strategy(self):
         """End-to-end form of the same trap: no cut may enter the boss."""

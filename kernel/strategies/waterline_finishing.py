@@ -532,11 +532,23 @@ def section_from_regions(regions, radius: float, cell: float,
                          pad_radius: float | None = None) -> Raster:
     """Material = the UNION of independent regions (each a list of loops).
 
-    Needed for a mesh cross-section taken exactly on a step plane: there the
-    material is "just below OR just above" the plane, and the two limits are
-    separate regions whose overlap must be OR-ed, not XOR-ed (XOR of a plate
-    and the boss standing on it is a frame - i.e. a hole under the boss,
-    which is the opposite of the truth; see
+    General union builder: several disjoint/nested closed regions rasterised
+    into one grid, even-odd INSIDE each region and OR across regions.  The
+    strategy's own paths all return ONE region - ``profile``, ``stock`` and
+    (since the round-3 step-plane rule) ``mesh``, which returns the section
+    just above ``z`` - so they take the exact single-region branch above.
+    The union branch is what a caller gets when it assembles independent
+    regions by hand (see ``test_multi_region_section_rejects_an_erosion`` and
+    ``test_a_step_plane_union_swallows_the_feature``).
+
+    It is NOT the step-plane rule any more, and the history is worth keeping
+    straight: round 1 fed the exact-plane even-odd set, which XOR-s a plate
+    and the boss standing on it into a FRAME (a hole under the boss) and the
+    contour cut through the boss; round 2 fed both limits as two regions and
+    unioned them, which is the SUPERSET - the plate outline covers the boss
+    wall's base band and a full block covers its pocket's wall, so the
+    feature vanished from the pass.  Round 3 keeps ONE limit: the material
+    that starts at ``z`` (see
     :meth:`WaterlineFinishingStrategy._material_boundaries`).
 
     ``radius`` erodes only a SINGLE region exactly: the erosion of a union
@@ -552,20 +564,24 @@ def section_from_regions(regions, radius: float, cell: float,
         raise ValueError(
             "a union of regions supports only radius = 0 (erosion of a union "
             "needs the union's own boundary); got %r" % (radius,))
-    clean = [list(r) for r in regions if r and len(r) >= 1
-             and all(len(loop) >= 3 for loop in r)]
+    # A degenerate loop is dropped rather than treated as fatal for the whole
+    # region - the policy section_from_boundaries already uses - so one 2-point
+    # loop cannot silently discard an entire region's geometry.
+    clean = [[list(loop) for loop in region if len(loop) >= 3]
+             for region in regions]
+    clean = [region for region in clean if region]
     if not clean:
         raise ValueError("section needs at least one closed boundary of >= 3 points")
     xs = [p[0] for region in clean for loop in region for p in loop]
     ys = [p[1] for region in clean for loop in region for p in loop]
-    bounds = section_bounds(min(xs), min(ys), max(xs), max(ys),
-                            pad_radius if pad_radius is not None else 0.0, cell)
+    pad = pad_radius if pad_radius is not None else 0.0
+    bounds = section_bounds(min(xs), min(ys), max(xs), max(ys), pad, cell)
     w, h = raster_shape(bounds, cell)
     if w * h > MAX_RASTER_CELLS:
         raise ValueError(
             f"section raster would be {w} x {h} = {w * h} cells at "
             f"cell_mm = {cell} (limit {MAX_RASTER_CELLS}) for a contour "
-            f"offset of {pad_radius:g} mm: raise cell_mm, lower "
+            f"offset of {pad:g} mm: raise cell_mm, lower "
             "scallop_rings, or shrink the stock")
     g = Raster(*bounds, cell)
     centres = [g.xmin + (i + 0.5) * cell for i in range(g.w)]
@@ -1153,9 +1169,10 @@ def plan_finishes(
             ``[closed XY loop, ...]``.  Material = UNION of the regions,
             even-odd inside each (so a hole is a second loop).  A prismatic
             part ignores ``z`` and returns one region; a mesh part returns
-            the material "just below OR just above" ``z`` as two regions when
-            ``z`` lands on a step plane - see
-            :meth:`WaterlineFinishingStrategy._material_boundaries`.
+            ONE region too - the cross-section just ABOVE ``z`` (the material
+            that starts at ``z``, which is what the tip at ``z`` finishes),
+            falling back to the section just below when nothing starts there
+            - see :meth:`WaterlineFinishingStrategy._material_boundaries`.
         z_levels: cutting heights, descending.
         tool_radius: ``R``; the waterline is the level set
             ``distance == R + stock_to_leave_mm`` of the material (the
@@ -1758,28 +1775,49 @@ class WaterlineFinishingStrategy(BaseStrategy):
         material is the UNION of the regions, even-odd inside each.
 
         * ``profile`` / stock footprint: one region, prismatic in z.
-        * ``mesh``: the cross-section of the CLOSED solid at exactly ``z`` is
-          ``(material just below z) OR (material just above z)``.
-          ``mesh_section_loops`` reports the curves where the model's
-          boundary meets the plane, and on a STEP plane - a boss standing on
-          a plate - that is the plate's outline AND the boss's outline.
-          Taking them as one even-odd region would punch a hole under the
-          boss (a frame), and taking only one side would drop the other
-          body; returning both limits as separate regions and unioning them
-          is the truth.  ``math.nextafter`` moves each sample off the plane
-          by one ULP, so no other feature can be crossed.
+        * ``mesh``: the section of the material the tool can reach from ``z``
+          upward - i.e. the section just ABOVE ``z``, falling back to the
+          section just below when there is nothing above.  ``mesh_section_loops``
+          reports the curves where the model's boundary meets a plane, and on
+          a STEP plane - a boss standing on a plate - that is the plate's
+          outline AND the boss's outline.  Taking the exact-plane even-odd set
+          XOR-s them into a frame (a hole under the boss) and the contour then
+          cut through the boss; unioning both limits is the SUPERSET and
+          swallows the feature instead (the plate outline hides the boss wall's
+          base band, the solid outline hides a pocket wall whose floor sits on
+          the plane).  The above-limit is the feature that starts at ``z``,
+          which is what the tip at ``z`` finishes.  ``math.nextafter`` moves
+          the sample off the plane by one ULP, so no other feature can be
+          crossed.
         """
         profile = cfg.get("profile")
         if profile is not None:
             return [[list(profile)]], "profile"
         mesh = cfg.get("mesh")
         if mesh is not None:
-            below = mesh_section_loops(mesh, math.nextafter(z, -math.inf))
+            # A pass at tip height z cuts UPWARD from z, so what it has to
+            # finish is the material that STARTS at z.  Take the section just
+            # ABOVE the plane; fall back to the section just below it only
+            # when there is nothing above (z is the top of the part, or the
+            # wall of a body whose band is finished by a lower level).
+            #
+            # Two wrong rules came before this one and both are pinned by
+            # tests.  Round 1 took the exact-plane even-odd set: on a step
+            # plane that XOR-s the two bodies into a FRAME (a hole under the
+            # boss) and the contour cut through the boss.  Round 2 unioned
+            # both limits instead, which is the SUPERSET - at a boss-on-plate
+            # step plane the union is the plate outline, so the boss wall's
+            # base band was never traced, and for a pocket whose floor sits
+            # on the plane the pocket wall contour disappeared entirely.
+            # The superset swallows the feature; the above-limit is the
+            # feature.
             above = mesh_section_loops(mesh, math.nextafter(z, math.inf))
-            regions = [r for r in (below, above) if r]
-            if not regions:
-                raise ValueError(f"the mesh has no cross-section at z = {z}")
-            return regions, "mesh"
+            if above:
+                return [above], "mesh"
+            below = mesh_section_loops(mesh, math.nextafter(z, -math.inf))
+            if below:
+                return [below], "mesh"
+            raise ValueError(f"the mesh has no cross-section at z = {z}")
         rect = [(stock.min.x, stock.min.y), (stock.max.x, stock.min.y),
                 (stock.max.x, stock.max.y), (stock.min.x, stock.max.y)]
         return [[rect]], "stock"
