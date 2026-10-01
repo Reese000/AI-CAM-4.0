@@ -79,10 +79,30 @@ Honest limits (declared, not hidden)
   level**.  For prismatic geometry (``profile``, stock footprint) and for any
   mesh whose cross-section does not GROW with height that descent is through
   air; for a mesh with an overhang or positive draft it can pass through
-  material above the entry level.  No rapid-clearance checker is implemented
-  here (follow-up, see the handoff): retract-to-clearance at the previous
-  position instead is not a fix either, because that position has the same
-  property.
+  material above the entry level.  That descent IS now checked
+  (:func:`blocked_column`, review finding m6 / card ``t_3b02b4a3``): before
+  the rapid from ``clearance_height`` to ``z_prev`` and before the plunge
+  from ``z_prev`` to the cutting level, the XY column is verified clear over
+  both spans, and a violation returns an ERROR ``ToolpathData`` naming the
+  offending move instead of emitting it - retracting first is NOT a fix,
+  because the obstruction sits in the very column the tool has to descend:
+  every height it could retract to is above the obstruction and the descent
+  still has to cross it.  Picking a different entry point on the loop could
+  avoid it (for a closed contour that is only a rotation of the start
+  index), and is deliberately NOT done here: the strategy refuses rather
+  than silently relocating the plunge.
+* What that check does NOT cover, declared: (1) the XY TRAVERSAL between two
+  loop start points, which happens at ``clearance_height`` - if that plane
+  sits below the mesh top, a chord between two start points can cross
+  material at that Z; F1's export-time guard
+  (``tools.export_f1_realpart.find_rapid_clearance_violations``) is the flat
+  cousin of this check and F2 has no export-time run of its own yet.
+  (2) LATERAL clearance: the check tests the tool AXIS, the point the path
+  actually descends through.  Material that reaches within ``R`` of the axis
+  without containing it is not reported - but at that distance the CUT at
+  that level is already impossible for the same reason (the flute occupies
+  the whole column above the tip), so it is a property of the level, not of
+  the entry, and is out of this check's scope.
 * A `finish_mode` of ``scallop`` cuts rings on the FLOOR only (``scallop_z``,
   default the deepest level); it is a horizontal iso-offset, not a 3D
   constant-scallop surface finishing.
@@ -1074,6 +1094,170 @@ def mesh_section_loops(mesh: dict, z: float) -> list[list[tuple[float, float]]]:
 
 
 # ---------------------------------------------------------------------------
+# Rapid / plunge clearance - the 3D column check (round-1 review finding m6)
+# ---------------------------------------------------------------------------
+
+#: XY nudge, mm, applied to a clearance query before it is tested against the
+#: triangle soup.  A mesh is a TRIANGLE SOUP: one flat face is two triangles
+#: sharing a diagonal, and a query that lands exactly on that shared edge is
+#: contained in both, so the vertical line would pierce the face TWICE and the
+#: even-odd parity would report solid as air (or the reverse) - a clearance
+#: check that flips on a tie is worse than none.  ``1e-7`` mm sits SIX orders
+#: above float64 round-off at part scale (a few ulps at 1000 mm is ~1e-13 mm)
+#: and about six orders below the smallest thing this module can resolve
+#: (``CELL_MM = 0.05``, i.e. 5e5 times the nudge), so it moves a query off an
+#: edge but can never move it across a real feature.
+CLEARANCE_NUDGE_MM = 1e-7
+
+#: Y-component factor of the nudge.  The nudge direction is
+#: ``(d, d * (sqrt(5)-1)/2)`` - an IRRATIONAL slope - so no mesh edge (every
+#: edge of a float64 mesh has a rational-ish slope, and an axis-aligned or 45
+#: degree edge is the common case) can be parallel to it: a query sitting
+#: exactly on an edge always leaves it.  A diagonal nudge ``(d, d)`` would
+#: stay ON a 45 degree edge and miss the point of the nudge entirely.
+NUDGE_SLOPE = (math.sqrt(5.0) - 1.0) / 2.0
+
+
+def column_crossings(mesh: dict, x: float, y: float) -> list[float]:
+    """Every height at which the vertical line through ``(x, y)`` pierces ``mesh``.
+
+    Sorted ascending, one entry per pierce, counted with the even-odd rule the
+    rest of this module uses for cross-sections, so a point at height ``z`` is
+    INSIDE the solid exactly when the number of crossings STRICTLY above ``z``
+    is odd (the line is outside above the topmost crossing).
+
+    Why a ray cast and not a stack of cross-sections: the membership of one
+    fixed ``(x, y)`` can change at any height where a triangle's plane passes
+    through the line - for a sloped face that is NOT a mesh vertex height, so
+    sampling sections at vertex heights can miss an obstruction entirely.
+
+    Rules, and why:
+
+    * the query is nudged by :data:`CLEARANCE_NUDGE_MM` along
+      :data:`NUDGE_SLOPE` first, so a query that lands exactly on a face's
+      shared diagonal (or on a wall) is attributed to exactly one triangle
+      and the parity cannot flip on a tie;
+    * a triangle whose XY projection does not contain the query is skipped
+      (bounding-box reject first, so the scan stays O(faces) with a cheap
+      constant);
+    * a triangle degenerate in XY - a vertical wall, or a zero-area sliver -
+      projects to a LINE, not an area, and cannot be pierced transversally;
+      it is skipped.  Its boundary is carried by the horizontal faces it
+      meets, exactly as :func:`mesh_section_loops` skips a face lying in the
+      plane and takes the boundary from its neighbours;
+    * two boxes stacked face to face contribute two coincident crossings at
+      the step plane and the pair CANCELS - the union has no surface there,
+      and the parity below it stays correct (measured in
+      ``test_a_solid_box_pierces_once_per_face`` and the overhang fixtures);
+    * like every other geometric rule in this module it assumes a closed
+      mesh, which is what ``kernel.stl.parse_stl`` returns.
+
+    F1's ``tools.export_f1_realpart.find_rapid_clearance_violations`` is the
+    flat cousin of this function: it answers "does an XY-traversing rapid sit
+    below ONE horizontal plane (the stock top)?" over posted G-code text.  The
+    F2 entry hazard is a Z-descent at a fixed XY through geometry that GROWS
+    with height, so a flat threshold cannot see it - this is its 3D
+    counterpart, run on the mesh BEFORE the move is emitted.
+    """
+    verts = mesh.get("vertices")
+    faces = mesh.get("faces")
+    if verts is None or faces is None:
+        raise ValueError("mesh must carry 'vertices' and 'faces'")
+    px = float(x) + CLEARANCE_NUDGE_MM
+    py = float(y) + CLEARANCE_NUDGE_MM * NUDGE_SLOPE
+    hits: list[float] = []
+    for tri in faces:
+        a = verts[int(tri[0])]
+        b = verts[int(tri[1])]
+        c = verts[int(tri[2])]
+        ax, ay, az = float(a[0]), float(a[1]), float(a[2])
+        bx, by, bz = float(b[0]), float(b[1]), float(b[2])
+        cx, cy, cz = float(c[0]), float(c[1]), float(c[2])
+        if (min(ax, bx, cx) > px or max(ax, bx, cx) < px
+                or min(ay, by, cy) > py or max(ay, by, cy) < py):
+            continue
+        e1x, e1y = bx - ax, by - ay
+        e2x, e2y = cx - ax, cy - ay
+        denom = e1x * e2y - e2x * e1y
+        if denom == 0.0:
+            continue                      # degenerate in XY (vertical wall)
+        dx, dy = px - ax, py - ay
+        u = (dx * e2y - e2x * dy) / denom
+        v = (e1x * dy - dx * e1y) / denom
+        if u < 0.0 or v < 0.0 or u + v > 1.0:
+            continue
+        if az == bz == cz:
+            # Horizontal face: the pierce height is that exact plane.  The
+            # barycentric blend below is mathematically the same number but
+            # can come back 4.0000000000000007 for a face at z = 4 - which
+            # would stand a hair ABOVE a band that starts at 4 and invent a
+            # picometre of "material" out of round-off (seen on the plate +
+            # boss fixture, whose plate top and boss bottom both sit at z=4).
+            hits.append(az)
+        else:
+            hits.append((1.0 - u - v) * az + u * bz + v * cz)
+    hits.sort()
+    return hits
+
+
+def blocked_span(crossings: list[float], z_from: float, z_to: float,
+                 ) -> list[tuple[float, float]]:
+    """Solid sub-spans of a vertical move from ``z_from`` to ``z_to``.
+
+    ``crossings`` is the sorted pierce list :func:`column_crossings` returned
+    for that column.  Returns ``[(z_lo, z_hi), ...]``, lowest first: touching
+    bands merge into one run (two boxes stacked face to face leave one
+    continuous solid), disjoint runs stay separate so a message can show
+    exactly which heights are solid, and an empty list means the column is
+    clear over the whole move.  The span is order-independent (a rapid from
+    ``clearance_height`` to ``z_prev`` and the plunge below it travel the
+    same set of points), and a zero-length span is trivially clear.
+    """
+    lo, hi = (z_from, z_to) if z_from <= z_to else (z_to, z_from)
+    if hi - lo <= 0.0:
+        return []
+    # Crossings at or below `lo` cannot change the parity inside the span;
+    # neither can one standing within Z_TOLERANCE_MM of `lo`.  That slack only
+    # ever decides the answer for heights in (lo, lo + slack) - a band 1e-9 mm
+    # thick - because a crossing at `c` contributes to the count of a height
+    # `z` only while ``z < c``, so nothing above ``lo + slack`` is affected.
+    # It is needed because a face that ENDS exactly at `lo` can come back a
+    # few ulps ABOVE it, and a clearance check that reports round-off as
+    # material refuses the part (the plate + boss fixture: plate top and boss
+    # bottom both at z = 4, band starting at z = 4).
+    crossings = [z for z in crossings if z > lo + Z_TOLERANCE_MM]
+    edges = [lo] + [z for z in crossings if lo < z < hi] + [hi]
+    solid: list[tuple[float, float]] = []
+    for a, b in zip(edges, edges[1:]):
+        if b <= a:
+            # A duplicate crossing - two boxes stacked face to face pierce
+            # the column twice AT the step plane - leaves a zero-height
+            # interval, and reporting it would print "Z4..Z4".  Skipping it
+            # cannot hide material: the parity of the intervals around it is
+            # counted from `crossings` directly, and the two solid runs it
+            # separates are merged below.
+            continue
+        mid = 0.5 * (a + b)
+        if sum(1 for z in crossings if z > mid) % 2:
+            if solid and a <= solid[-1][1]:
+                solid[-1] = (solid[-1][0], b)   # touching runs: one solid
+            else:
+                solid.append((a, b))
+    return solid
+
+
+def blocked_column(mesh: dict, x: float, y: float,
+                   z_from: float, z_to: float) -> list[tuple[float, float]]:
+    """Solid sub-spans of a vertical move at ``(x, y)``: :func:`blocked_span`.
+
+    One ray cast of :func:`column_crossings` plus one span slice.  Callers
+    that measure two spans of the SAME column (the entry does) should cast
+    once and call :func:`blocked_span` twice instead.
+    """
+    return blocked_span(column_crossings(mesh, x, y), z_from, z_to)
+
+
+# ---------------------------------------------------------------------------
 # Pass planning
 # ---------------------------------------------------------------------------
 
@@ -1734,6 +1918,16 @@ class WaterlineFinishingStrategy(BaseStrategy):
 
         moves: list[Move] = []
         feed_counts: dict[float, int] = {}
+        # The triangle mesh the clearance column is measured against; a
+        # ``profile``/stock source is prismatic in z, so its column at a loop
+        # start point is clear by construction (the point is R outside the
+        # section at the cutting level, and the section does not change with
+        # height) and is not ray-cast at all.  ``clearance_checks`` reports
+        # how many spans were actually measured, so a test can tell the fast
+        # path from a check that never ran.
+        mesh = cfg.get("mesh")
+        clearance_checks = 0
+        clearance_violations: list[str] = []
 
         def _rapid(end: Vec3) -> None:
             moves.append(Move(move_type=MoveType.RAPID, end=end, feed=0.0,
@@ -1746,10 +1940,38 @@ class WaterlineFinishingStrategy(BaseStrategy):
 
         z_prev = top_z
         for fp in passes:
-            for loop in fp.loops:
+            for index, loop in enumerate(fp.loops, start=1):
                 if len(loop) < 2:
                     continue
                 x0, y0 = loop[0]
+                if mesh is not None:
+                    # Both vertical spans the entry travels at (x0, y0): the
+                    # rapid from ``clearance_height`` to ``z_prev`` and the
+                    # plunge from ``z_prev`` to the cutting level.  Checked
+                    # BEFORE either move is emitted - a refusal has to happen
+                    # before the tool moves, not after (review finding m6).
+                    # The column is ray-cast ONCE per loop and both spans are
+                    # slices of it, so the O(faces) scan runs once, not twice.
+                    # Their union is [fp.z, clearance_height], which is also
+                    # the span the loop's EXIT retract travels: every loop
+                    # leaves from ``loop[0]`` again (a closed contour, or cut
+                    # back to its start), so the same two measurements cover
+                    # the way out as well.
+                    crossings = column_crossings(mesh, x0, y0)
+                    for z_from, z_to, what in (
+                        (clearance, z_prev, "rapid from clearance"),
+                        (z_prev, fp.z, "plunge"),
+                    ):
+                        clearance_checks += 1
+                        bands = blocked_span(crossings, z_from, z_to)
+                        if bands:
+                            where = ", ".join(f"Z{a:g}..Z{b:g}"
+                                              for a, b in bands)
+                            clearance_violations.append(
+                                f"{what} at (x{x0:g}, y{y0:g}) from "
+                                f"Z{z_from:g} to Z{z_to:g} passes through "
+                                f"material in {where} (pass z={fp.z:g}, "
+                                f"loop {index} of {len(fp.loops)})")
                 start = Vec3(x0, y0, fp.z)
                 _rapid(Vec3(x0, y0, clearance))
                 _rapid(Vec3(x0, y0, z_prev))
@@ -1772,6 +1994,31 @@ class WaterlineFinishingStrategy(BaseStrategy):
                     pos = start
                 _rapid(Vec3(pos.x, pos.y, clearance))
                 z_prev = fp.z
+
+        if clearance_violations:
+            # DECISION (t_3b02b4a3): refuse with a named move rather than
+            # emit, and rather than "retract to a verified-clear height"
+            # first - see the module docstring: the obstruction IS the
+            # column, so no height at that XY is both clear and reachable.
+            more = (f"  (+{len(clearance_violations) - 1} more)"
+                    if len(clearance_violations) > 1 else "")
+            return ToolpathData(
+                name="Waterline Finishing",
+                tool=tool,
+                strategy=self.name,
+                params={
+                    "error": (
+                        f"rapid clearance: the tool would descend through "
+                        f"material at a loop start point "
+                        f"({len(clearance_violations)} offending move(s), "
+                        f"the XY column is not clear between "
+                        f"clearance_height and the cutting level).  First: "
+                        f"{clearance_violations[0]}{more}"),
+                    "clearance_violations": clearance_violations,
+                    "clearance_checks": clearance_checks,
+                    "profile_source": source_seen.get("v", "stock"),
+                },
+            )
 
         params: dict[str, Any] = {
             "profile_source": source_seen.get("v", "stock"),
@@ -1797,6 +2044,11 @@ class WaterlineFinishingStrategy(BaseStrategy):
                 f"{value:.6f}": count
                 for value, count in sorted(feed_counts.items())
             },
+            # Clearance observability: how many entry spans were ray-cast and
+            # what they found (always empty here - a violation returns the
+            # error ToolpathData above instead).
+            "clearance_checks": clearance_checks,
+            "clearance_violations": clearance_violations,
             "moves": len(moves),
         }
         return ToolpathData(

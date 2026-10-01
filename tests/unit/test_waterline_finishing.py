@@ -1427,3 +1427,269 @@ class TestToolpath:
     def test_raster_cell_is_reported(self):
         tp = get_strategy("waterline_finishing").run(operation(cell_mm=0.1))
         assert tp.params["raster_cell_mm"] == 0.1
+
+
+# ---------------------------------------------------------------------------
+# Rapid / plunge clearance - the entry-column guard
+# (review round-1 finding m6, follow-up card t_3b02b4a3)
+# ---------------------------------------------------------------------------
+
+def vertical_segments(tp) -> list[tuple[float, float, float, float]]:
+    """Re-derive every Z-only segment of ``tp``: ``(x, y, z_from, z_to)``.
+
+    Independent of how the toolpath was built: a move whose XY equals the
+    previous move's XY while its Z differs is vertical, which covers the
+    entry's rapid pair, the entry plunge AND the loop's exit retract.
+    """
+    out = []
+    for prev, cur in zip(tp.moves, tp.moves[1:]):
+        if (prev.end.x == cur.end.x and prev.end.y == cur.end.y
+                and prev.end.z != cur.end.z):
+            out.append((cur.end.x, cur.end.y, prev.end.z, cur.end.z))
+    return out
+
+
+def mesh_operation(mesh, levels, top, bottom, stock, **extra) -> OperationParams:
+    """``operation()`` with the material taken from a triangle mesh."""
+    op = operation(mesh=mesh, finish_levels=list(levels), _top=top,
+                   _bottom=bottom, _stock=stock, **extra)
+    op.extra_args.pop("profile")
+    return op
+
+
+def overhang_mesh() -> dict:
+    """Narrow box BELOW, wider box ABOVE: the section GROWS with height.
+
+    ``20..40 x 15..25 z 0..4`` under ``10..50 x 5..35 z 4..8``.  At the
+    cutting level ``z = 0`` the loop start sits ``R`` outside the narrow box
+    - e.g. ``(19.375, 13.54)`` - which is inside the wide box's footprint,
+    so the column at that point carries material from ``z = 4`` up.  Merging
+    two disjoint closed boxes keeps the soup watertight in the parity sense:
+    they only touch at ``z = 4``.
+    """
+    return merge_meshes(box_mesh((20.0, 15.0, 0.0), (40.0, 25.0, 4.0)),
+                        box_mesh((10.0, 5.0, 4.0), (50.0, 35.0, 8.0)))
+
+
+def draft_mesh() -> dict:
+    """Square frustum: the section grows by 8 mm over 4 mm of Z (positive draft).
+
+    Base ``16..24 x 16..24`` at ``z = 0``, top ``8..32 x 8..32`` at ``z = 4``.
+    Every side is a SLOPED face, so a vertical line through the overhang is
+    pierced at a height that is NOT a mesh vertex height - the branch of
+    ``column_crossings`` that interpolates the pierce height through the
+    triangle's plane, which no axis-aligned fixture reaches.  The growth
+    (8 mm) is far larger than ``R`` (1.5875), so every loop start of the
+    lowest level sits under material whatever corner of the contour it lands
+    on, and the strategy must refuse.
+    """
+    bottom = [(16.0, 16.0, 0.0), (24.0, 16.0, 0.0),
+              (24.0, 24.0, 0.0), (16.0, 24.0, 0.0)]
+    top = [(8.0, 8.0, 4.0), (32.0, 8.0, 4.0),
+           (32.0, 32.0, 4.0), (8.0, 32.0, 4.0)]
+    verts = bottom + top
+    faces = [(0, 1, 2), (0, 2, 3),            # base cap
+             (4, 6, 5), (4, 7, 6)]            # top cap
+    for k in range(4):                        # four sloped sides
+        j = (k + 1) % 4
+        faces.append((k, j, 4 + j))
+        faces.append((k, 4 + j, 4 + k))
+    return {"vertices": verts, "faces": faces}
+
+
+class TestRapidClearance:
+    """The guard itself, then the two fixtures the card names."""
+
+    def test_a_solid_box_pierces_once_per_face(self):
+        """Top face and bottom face, nothing else - vertical walls skipped."""
+        mesh = box_mesh((0.0, 0.0, 0.0), (4.0, 4.0, 8.0))
+        assert wlf.column_crossings(mesh, 2.0, 2.0) == [0.0, 8.0]
+        assert wlf.column_crossings(mesh, 6.0, 2.0) == []
+
+    def test_a_query_on_a_shared_face_diagonal_needs_the_nudge(self, monkeypatch):
+        """Negative control for the nudge: without it the guard sees AIR.
+
+        ``box_mesh``'s top face at ``(0,0)..(4,4)`` is two triangles sharing
+        the diagonal ``y = x``, and ``(2, 2)`` sits exactly on it - as does
+        the bottom face's.  With the nudge both faces are pierced ONCE each
+        (``[0.0, 8.0]``); with the nudge switched off BOTH triangles of each
+        face report the pierce, the line sees four crossings, the even-odd
+        parity inside the solid reads EVEN and the solid is called air - the
+        check would then miss the very obstruction it exists to catch.
+        """
+        mesh = box_mesh((0.0, 0.0, 0.0), (4.0, 4.0, 8.0))
+        assert wlf.blocked_column(mesh, 2.0, 2.0, 0.0, 8.0) == [(0.0, 8.0)]
+        monkeypatch.setattr(wlf, "CLEARANCE_NUDGE_MM", 0.0)
+        assert wlf.column_crossings(mesh, 2.0, 2.0) == [0.0, 0.0, 8.0, 8.0]
+        assert wlf.blocked_column(mesh, 2.0, 2.0, 0.0, 8.0) == []
+
+    def test_blocked_column_reports_each_solid_band_separately(self):
+        """Air between two bands stays air - the message must not overstate."""
+        mesh = merge_meshes(box_mesh((0.0, 0.0, 0.0), (4.0, 4.0, 4.0)),
+                            box_mesh((0.0, 0.0, 6.0), (4.0, 4.0, 8.0)))
+        assert wlf.column_crossings(mesh, 2.0, 2.0) == [0.0, 4.0, 6.0, 8.0]
+        assert wlf.blocked_column(mesh, 2.0, 2.0, 0.0, 8.0) == [
+            (0.0, 4.0), (6.0, 8.0)]
+        # ...and a point beside both boxes is clear over the same span.
+        assert wlf.blocked_column(mesh, 6.0, 2.0, 0.0, 8.0) == []
+
+    def test_a_span_is_order_independent_and_a_tiny_span_is_clear(self):
+        mesh = box_mesh((0.0, 0.0, 0.0), (4.0, 4.0, 8.0))
+        assert wlf.blocked_column(mesh, 2.0, 2.0, 0.0, 8.0) == \
+            wlf.blocked_column(mesh, 2.0, 2.0, 8.0, 0.0) == [(0.0, 8.0)]
+        assert wlf.blocked_column(mesh, 2.0, 2.0, 3.0, 3.0) == []  # zero len
+        assert wlf.blocked_column(mesh, 2.0, 2.0, 8.0, 12.0) == []  # above
+        assert wlf.blocked_column(mesh, 6.0, 2.0, 0.0, 8.0) == []   # beside
+
+    def test_a_prismatic_mesh_column_is_clear_at_every_height(self):
+        """The property the fast path of the guard rests on.
+
+        The loop start is ``R`` outside the section at the cutting level; if
+        the section does not change with height, that point is outside the
+        solid at EVERY height, so no descent there can cross material.
+        """
+        mesh = box_mesh((0.0, 0.0, 0.0), (16.0, 8.0, 6.0))
+        for x, y in ((-R, 4.0), (16.0 + R, 4.0), (8.0, -R), (8.0, 8.0 + R)):
+            assert wlf.blocked_column(mesh, x, y, 0.0, 6.0) == [], (x, y)
+
+    def test_a_prismatic_mesh_still_emits_its_toolpath(self):
+        """The guard must be invisible where it has nothing to say."""
+        mesh = box_mesh((0.0, 0.0, 0.0), (16.0, 8.0, 6.0))
+        stock = rect_stock(-4.0, -2.0, 20.0, 10.0, 0.0, 6.0)
+        tp = get_strategy("waterline_finishing").run(
+            mesh_operation(mesh, [6.0, 3.0, 0.0], 6.0, 0.0, stock))
+        assert "error" not in tp.params
+        assert tp.params["profile_source"] == "mesh"
+        assert tp.params["clearance_violations"] == []
+        assert tp.params["clearance_checks"] == 6   # 3 loops x 2 spans: it RAN
+        assert tp.params["moves"] > 0
+        # Re-measure the DELIVERED moves, not just the plan.
+        assert vertical_segments(tp), "no vertical move at all?"
+        for x, y, a, b in vertical_segments(tp):
+            assert wlf.blocked_column(mesh, x, y, a, b) == [], (x, y, a, b)
+
+    def test_a_profile_source_is_not_ray_cast(self):
+        """Prismatic by construction - documented fast path, checks == 0."""
+        tp = get_strategy("waterline_finishing").run(operation())
+        assert tp.params["profile_source"] == "profile"
+        assert tp.params["clearance_checks"] == 0
+        assert tp.params["clearance_violations"] == []
+        assert "error" not in tp.params
+
+    def test_an_overhanging_section_is_refused_naming_the_rapid(self):
+        """A section that grows with height must NOT be descended through.
+
+        The card's fixture: the rapid from ``clearance_height`` down to
+        ``z_prev`` at the loop start point travels straight through the wide
+        box.  The strategy refuses instead of emitting, and the message
+        names the move, the XY, the solid band and the pass.
+        """
+        mesh = overhang_mesh()
+        stock = rect_stock(0.0, 0.0, 60.0, 40.0, 0.0, 8.0)
+        tp = get_strategy("waterline_finishing").run(
+            mesh_operation(mesh, [8.0, 4.0, 0.0], 8.0, 0.0, stock))
+        assert tp.moves == [], "a refused descent must not emit a toolpath"
+        assert tp.params["clearance_violations"], "no violation was reported"
+        assert tp.params["clearance_checks"] == 6    # 3 loops x 2 spans
+        err = tp.params["error"]
+        assert "rapid from clearance" in err         # WHICH move
+        assert "material in Z4..Z5" in err           # ...and where
+        assert "at (x" in err                        # ...and at which XY
+        assert "(pass z=0" in err                    # ...and on which pass
+
+    def test_the_plunge_span_is_checked_separately_from_the_rapid(self):
+        """The card's first range: ``[fp.z, z_prev]`` has to be measured too.
+
+        Narrow box ``20..40 x 15..25 z 0..2`` under a wider one
+        ``10..50 x 5..35 z 2..4``, levels ``[4, 0]``.  The rapid at ``z = 5``
+        is above the mesh and clear; the plunge from ``z_prev = 4`` down to
+        ``z = 0`` is the move that crosses the wide box.
+        """
+        mesh = merge_meshes(box_mesh((20.0, 15.0, 0.0), (40.0, 25.0, 2.0)),
+                            box_mesh((10.0, 5.0, 2.0), (50.0, 35.0, 4.0)))
+        stock = rect_stock(0.0, 0.0, 60.0, 40.0, 0.0, 4.0)
+        tp = get_strategy("waterline_finishing").run(
+            mesh_operation(mesh, [4.0, 0.0], 4.0, 0.0, stock))
+        assert tp.moves == []
+        err = tp.params["error"]
+        assert "plunge at (x" in err
+        assert "material in Z2..Z4" in err
+        assert "rapid from clearance" not in err     # the clear span did not fire
+
+    def test_no_emitted_vertical_move_crosses_material(self):
+        """End-to-end form: a section that SHRINKS upward emits clean moves.
+
+        Plate ``0..60 x 0..40 z 0..4`` with a boss ``20..40 x 15..25 z 4..8``
+        - the classic non-prismatic mesh that must stay UNAFFECTED.  Every
+        vertical segment of the delivered toolpath (entry rapids, plunges,
+        exit retracts) is re-measured against the mesh after the fact.
+        """
+        mesh = merge_meshes(box_mesh((0.0, 0.0, 0.0), (60.0, 40.0, 4.0)),
+                            box_mesh((20.0, 15.0, 4.0), (40.0, 25.0, 8.0)))
+        stock = rect_stock(0.0, 0.0, 60.0, 40.0, 0.0, 8.0)
+        tp = get_strategy("waterline_finishing").run(
+            mesh_operation(mesh, [8.0, 4.0, 0.0], 8.0, 0.0, stock))
+        assert "error" not in tp.params
+        assert tp.params["clearance_violations"] == []
+        segments = vertical_segments(tp)
+        assert len(segments) >= 6, segments
+        blocked = [(x, y, a, b) for (x, y, a, b) in segments
+                   if wlf.blocked_column(mesh, x, y, a, b)]
+        assert blocked == [], blocked
+
+    def test_a_sloped_face_is_pierced_at_the_interpolated_height(self):
+        """The draft branch: a pierce height that is not a vertex height.
+
+        ``16 - 2*z`` is the west wall of the frustum fixture, so the column at
+        ``x = 16 - R`` is pierced by the wall at ``z = (16 - x) / 2`` and by
+        the flat top cap at ``z = 4`` - the wall's pierce goes through the
+        barycentric blend, the cap through the exact-horizontal fast path.
+        (The query nudge shifts x by 1e-7 mm and z by 5e-8 mm, hence the
+        1e-6 tolerance.)
+        """
+        mesh = draft_mesh()
+        x = 16.0 - R
+        assert wlf.column_crossings(mesh, x, 20.0) == pytest.approx(
+            [(16.0 - x) / 2.0, 4.0], abs=1e-6)
+        # The column is solid from the wall up to the top cap, and clear
+        # below the wall (outside the base footprint).
+        bands = wlf.blocked_column(mesh, x, 20.0, 0.0, 4.0)
+        assert len(bands) == 1
+        assert bands[0][0] == pytest.approx((16.0 - x) / 2.0, abs=1e-6)
+        assert bands[0][1] == 4.0
+        assert wlf.blocked_column(mesh, x, 20.0, 4.0, 5.0) == []   # above
+        assert wlf.blocked_column(mesh, x, 20.0, 0.0, 0.5) == []   # below
+
+    def test_a_positive_draft_part_is_refused_before_any_move(self):
+        """End-to-end form of the card's "positive-draft" half.
+
+        Same frustum, run through ``run``: the lowest level's entry column
+        runs into the sloped wall, so nothing may be emitted and the message
+        has to name the plunge.
+        """
+        stock = rect_stock(0.0, 0.0, 40.0, 40.0, 0.0, 4.0)
+        tp = get_strategy("waterline_finishing").run(
+            mesh_operation(draft_mesh(), [4.0, 0.0], 4.0, 0.0, stock))
+        assert tp.moves == [], f"moves were emitted: {len(tp.moves)}"
+        assert "plunge at (x" in tp.params["error"]
+        assert tp.params["clearance_violations"]
+        assert tp.params["clearance_checks"] == 4   # 2 loops x 2 spans
+
+    def test_two_boxes_touching_face_to_face_keep_one_surface(self):
+        """A step plane is TWO coincident faces; the pair must not flip parity.
+
+        Plate ``0..60 x 0..40 z 0..4`` under a boss ``20..40 x 15..25 z 4..8``,
+        both closed and only touching at ``z = 4``.  A column through BOTH
+        footprints is pierced four times, ``[0, 4, 4, 8]``: the two crossings
+        at the step plane must leave one continuous solid ``0..8`` - not a
+        hole in it, not two bands with a phantom ``Z4..Z4`` between them.
+        """
+        mesh = merge_meshes(box_mesh((0.0, 0.0, 0.0), (60.0, 40.0, 4.0)),
+                            box_mesh((20.0, 15.0, 4.0), (40.0, 25.0, 8.0)))
+        assert wlf.column_crossings(mesh, 30.0, 20.0) == [0.0, 4.0, 4.0, 8.0]
+        assert wlf.blocked_column(mesh, 30.0, 20.0, 0.0, 8.0) == [(0.0, 8.0)]
+        # ...beside the boss only the plate is pierced ...
+        assert wlf.column_crossings(mesh, 50.0, 20.0) == [0.0, 4.0]
+        # ...and a band that starts at the step plane still reads 4..8,
+        # because the pair of coincident crossings sits at its lower edge.
+        assert wlf.blocked_column(mesh, 30.0, 20.0, 4.0, 8.0) == [(4.0, 8.0)]

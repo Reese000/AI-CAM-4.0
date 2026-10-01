@@ -100,6 +100,34 @@ def write_plate_stl(path: Path) -> Path:
     return path
 
 
+def write_overhang_stl(path: Path) -> Path:
+    """A narrow plate under a WIDER one: the cross-section grows with height.
+
+    The two boxes only touch at ``z = 4``, so the parsed mesh stays a valid
+    triangle soup for the even-odd rules (and for the entry-column ray cast,
+    which is what this fixture is for: the descent at the lower level's loop
+    start point passes through material above it).
+    """
+    boxes = [((20.0, 15.0, 0.0), (40.0, 25.0, 4.0)),
+             ((10.0, 5.0, 4.0), (50.0, 35.0, 8.0))]
+    lines = ["solid overhang"]
+    for p0, p1 in boxes:
+        for normal, corners in _box_triangles(p0, p1):
+            lines.append(
+                "  facet normal {} {} {}".format(*[f"{v:g}" for v in normal])
+            )
+            lines.append("    outer loop")
+            for corner in corners:
+                lines.append(
+                    "      vertex {} {} {}".format(*[f"{v:g}" for v in corner])
+                )
+            lines.append("    endloop")
+            lines.append("  endfacet")
+    lines.append("endsolid overhang")
+    path.write_text("\n".join(lines) + "\n")
+    return path
+
+
 def stock_from_mesh(mesh, margin: float = 0.0) -> BBox:
     """Bounding box of the parsed mesh, optionally grown in X/Y only.
 
@@ -116,8 +144,10 @@ def stock_from_mesh(mesh, margin: float = 0.0) -> BBox:
     )
 
 
-def toolpath_from_stl(tmp_path: Path, **extra):
-    stl_path = write_plate_stl(tmp_path / "plate.stl")
+def toolpath_from_stl(tmp_path: Path, writer=write_plate_stl, **extra):
+    """Parse ``writer``'s STL and run the whole strategy on it (plate by
+    default); ``mesh`` in ``extra`` would override the parsed geometry."""
+    stl_path = writer(tmp_path / "part.stl")
     mesh = parse_stl(stl_path)
     stock = stock_from_mesh(mesh, STOCK_MARGIN)
     args = {
@@ -283,3 +313,21 @@ class TestF2EndToEnd:
         for move in tp.moves:
             if move.move_type is MoveType.LINEAR:
                 assert round(move.end.z, 6) in levels
+
+    def test_an_overhanging_stl_is_refused_before_any_move(self, tmp_path):
+        """A section that grows with height is not descended through.
+
+        Same pipeline as every other test here - ``parse_stl`` (numpy
+        vertices, the real input shape), ``run`` - but the part is a narrow
+        plate under a wider one, so the loop start point of the lowest level
+        sits under material.  The strategy must return an error ToolpathData
+        naming the offending move and emit NOTHING, rather than post a rapid
+        through solid; the plate fixture above must still be unaffected
+        (every other test in this file proves that one).
+        """
+        _, _, tp = toolpath_from_stl(tmp_path, writer=write_overhang_stl)
+        assert tp.params["profile_source"] == "mesh"
+        assert "error" in tp.params, "the descent through material was emitted"
+        assert "rapid clearance" in tp.params["error"]
+        assert tp.params["clearance_violations"]
+        assert tp.moves == [], f"moves were emitted: {len(tp.moves)}"
