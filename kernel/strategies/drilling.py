@@ -33,7 +33,7 @@ Geometry inputs
   section 3.3, "needs feature recognition"), and the reference takes its hole
   table from the capture's posted body for the same reason.  The measured
   feature inventory of the S1 real part is evidence, not an input: see
-  ``Fusion 360 RE/tests/p5_evidence/p5_5_s1_hole_inventory.txt``.
+  ``Fusion 360 RE/tests/p5_evidence/p5_5_s1_hole_inventory_final.txt``.
 * Machining planes follow the reference's measured modes (drilling.md R9):
   ``retract_z = stock_top + retract_height_offset`` and
   ``clearance_z = retract_z + clearance_height_offset``, both rounded with

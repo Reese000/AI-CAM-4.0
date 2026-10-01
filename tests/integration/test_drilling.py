@@ -251,7 +251,8 @@ class TestF3EndToEnd:
         # test_the_posted_program_carries_the_mandatory_words cover them), and
         # ``SUPPORTED_GCODES``/``SUPPORTED_MCODES`` list the zero-padded
         # ``M03``/``M05`` forms that the parser's own normalization never
-        # produces, and omit ``G21``/``G94``/``M05``.
+        # produces (normalization strips the leading zero, so ``M5`` is what
+        # it emits), and omit ``G21``/``G94`` and the normalized ``M5``.
         assert all(c.command.startswith(("G", "M")) for c in commands)
         assert {c.command for c in commands} >= {"G0", "G1", "G90", "M30"}
 
