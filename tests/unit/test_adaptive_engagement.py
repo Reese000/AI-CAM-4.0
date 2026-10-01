@@ -261,6 +261,16 @@ class TestValidation:
         errors = self._errors(lambda op: op.extra_args.update(engagement_gate=gate))
         assert any("engagement_gate" in e for e in errors)
 
+    @pytest.mark.parametrize("feed", [float("nan"), float("inf")])
+    def test_non_finite_values_are_rejected_not_propagated(self, feed):
+        """nan/inf are falsy for every ``<=``/``<`` range check below.
+
+        Without the isfinite guard ``feed_rate=nan`` passed validation and
+        would have posted ``Fnan`` - a fourth, unmeasured feed value.
+        """
+        errors = self._errors(lambda op: setattr(op, "feed_rate", feed))
+        assert any("finite" in e for e in errors)
+
     def test_bottom_must_not_be_above_the_top(self):
         errors = self._errors(
             lambda op: setattr(op, "top_of_stock", op.bottom_of_stock - 1.0)
@@ -413,6 +423,47 @@ class TestGeneratedToolpath:
         )
         assert bad_gate_type.moves == []
         assert "engagement_gate" in bad_gate_type.params["error"]
+
+    @pytest.mark.parametrize("key", ["stepover", "stepdown", "feed_rate"])
+    def test_direct_call_with_a_non_numeric_value_reports_an_error(self, key):
+        """No raw ValueError: a bad kwarg becomes an error ToolpathData.
+
+        ``float("fast")`` used to raise before the problems list was ever
+        built, which broke the module's own "not a raw exception" contract
+        for every parameter except ``engagement_gate``.
+        """
+        kwargs: dict = {"stepover": 0.4, "stepdown": 3.0, "feed_rate": FEED}
+        kwargs[key] = "fast"
+        try:
+            tp = AdaptiveEngagementStrategy().generate_toolpath(
+                make_stock(), ToolDef(diameter=TOOL_DIAMETER), **kwargs
+            )
+        except BaseException as exc:  # noqa: BLE001 - contract is "no raise"
+            raise AssertionError(
+                f"generate_toolpath({key}='fast') raised "
+                f"{type(exc).__name__}: {exc}; expected an error ToolpathData"
+            ) from exc
+        assert tp.moves == []
+        assert key in tp.params["error"]
+        assert "must be a number" in tp.params["error"]
+
+    @pytest.mark.parametrize("key", ["stepover", "stepdown", "feed_rate"])
+    def test_direct_call_with_a_non_finite_value_reports_an_error(self, key):
+        """nan must not reach the geometry as NaN coordinates."""
+        kwargs: dict = {"stepover": 0.4, "stepdown": 3.0, "feed_rate": FEED}
+        kwargs[key] = float("nan")
+        try:
+            tp = AdaptiveEngagementStrategy().generate_toolpath(
+                make_stock(), ToolDef(diameter=TOOL_DIAMETER), **kwargs
+            )
+        except BaseException as exc:  # noqa: BLE001 - contract is "no raise"
+            raise AssertionError(
+                f"generate_toolpath({key}=nan) raised "
+                f"{type(exc).__name__}: {exc}; expected an error ToolpathData"
+            ) from exc
+        assert tp.moves == []
+        assert key in tp.params["error"]
+        assert "finite" in tp.params["error"]
 
     def test_extra_args_stepover_is_validated_before_it_is_used(self):
         """run() merges extra_args over the field, so validation must too."""

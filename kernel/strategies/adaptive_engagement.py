@@ -13,9 +13,14 @@ level with concentric offset rings, inside-out (contour-parallel clearing):
 * the FIRST cut of every following ring is a diagonal step outward from the
   previous ring's corner into virgin material.  Only the disc of radius
   ``R = D/2`` around that corner has been cleared, and that disc is a subset of
-  the swept capsule, so the fresh swept area is exactly ``2 * R * L`` for a
-  travel ``L`` - i.e. ``fresh area / travel = 2R = D``.  It is therefore
-  priced as a full-diameter slot cut too (the reduced arm), not as a band cut;
+  the swept capsule, so the fresh swept area is close to ``2 * R * L`` for a
+  travel ``L`` - i.e. ``fresh area / travel`` is close to ``2R = D``.  It is
+  a few percent below ``D`` where the capsule clips the band the previous
+  ring already cleared (an independent review-round grid probe of fresh
+  top-view area measured 0.97-0.98 * D across stepover 0.25-0.5).  Either
+  way it is priced as a full-diameter slot cut (the reduced arm), not as a
+  band cut: the gate sits at ``0.5 * D``, so the decision holds with about
+  2x margin;
 * each ring's four side runs are offset by one stepover from the band the
   previous ring already cleared, so they open a fresh band
   ``prev_inset - inset <= spacing = stepover * D`` wide and their radial
@@ -68,9 +73,10 @@ What is NOT implemented (declared, not hidden - F1's spec source is
 * **E-A2** tolerance chain and **E-A3** ``stockToLeave``: no tolerance-driven
   chord error and no residual stock allowance - the rings clear to the
   footprint exactly;
-* **E-A4** helical entry: this prototype uses a straight vertical plunge
-  priced at ``tool_feedPlunge`` (Fusion's ``rampType = 'helix'``,
-  ``SCH:35784``), so entry-move count and entry path length are NOT
+* helical entry: this prototype uses a straight vertical plunge priced at
+  ``tool_feedPlunge`` (Fusion's ``rampType = 'helix'``, ``SCH:35784`` - and
+  the ``helicalRampDiameter`` equation ``E-A4``, ``SCH:35848``, is not
+  implemented either), so entry-move count and entry path length are NOT
   comparable to a capture;
 * generator identity: the rings are contour-parallel (concentric), and
   ``docs/ideal-cam-architecture.md:218-220`` records that candidate A3
@@ -87,6 +93,7 @@ STL -> :meth:`AdaptiveEngagementStrategy.run` -> ``ToolpathData`` ->
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from kernel.strategies.base import BaseStrategy, OperationParams
@@ -245,10 +252,16 @@ class AdaptiveEngagementStrategy(BaseStrategy):
         def number(key: str) -> float | None:
             value = effective[key]  # every key above is setdefault'd
             try:
-                return float(value)
+                parsed = float(value)
             except (TypeError, ValueError):
                 errors.append(f"{key} must be a number, got {value!r}")
                 return None
+            if not math.isfinite(parsed):
+                # nan/inf slip past every <= / < comparison below, so they
+                # would reach the geometry as NaN coordinates.
+                errors.append(f"{key} must be a finite number, got {value!r}")
+                return None
+            return parsed
 
         stepover = number("stepover")
         if stepover is not None and not 0.0 < stepover <= 0.5:
@@ -305,13 +318,30 @@ class AdaptiveEngagementStrategy(BaseStrategy):
             ToolpathData whose cutting moves carry only the three measured
             feed values; rapids carry ``feed = 0`` (no feed word).
         """
-        stepover_frac = float(kwargs.get("stepover", 0.4))
-        stepdown = float(kwargs.get("stepdown", 2.0))
-        feed_cutting = float(kwargs.get("feed_rate", 1000.0))
-        speed = float(kwargs.get("spindle_speed", 12000.0))
-        clearance = float(kwargs.get("clearance_height", 5.0))
-        top_z = float(kwargs.get("top_of_stock", stock.max.z))
-        bottom_z = float(kwargs.get("bottom_of_stock", stock.min.z))
+        # A direct generate_toolpath() call is not obliged to pass numbers:
+        # coerce here so a bad value becomes an error ToolpathData below
+        # rather than a raw ValueError from float().
+        bad_numbers: list[str] = []
+
+        def _number(key: str, default: Any) -> float:
+            raw = kwargs.get(key, default)
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):
+                bad_numbers.append(f"{key} must be a number, got {raw!r}")
+                return float("nan")  # never used: bad_numbers short-circuits
+            if not math.isfinite(value):
+                bad_numbers.append(f"{key} must be a finite number, got {raw!r}")
+                return float("nan")  # never used: bad_numbers short-circuits
+            return value
+
+        stepover_frac = _number("stepover", 0.4)
+        stepdown = _number("stepdown", 2.0)
+        feed_cutting = _number("feed_rate", 1000.0)
+        speed = _number("spindle_speed", 12000.0)
+        clearance = _number("clearance_height", 5.0)
+        top_z = _number("top_of_stock", stock.max.z)
+        bottom_z = _number("bottom_of_stock", stock.min.z)
 
         # `run()` validates first; a direct generate_toolpath() call can still
         # arrive here with parameters validate_params() would have rejected,
@@ -333,7 +363,7 @@ class AdaptiveEngagementStrategy(BaseStrategy):
         cy = stock.center.y
         slot_half_width = min(half_x, half_y)
 
-        problems: list[str] = []
+        problems: list[str] = list(bad_numbers)
         if not 0.0 < stepover_frac <= 0.5:
             problems.append(
                 f"stepover must be a fraction of D in (0, 0.5], got {stepover_frac}"
