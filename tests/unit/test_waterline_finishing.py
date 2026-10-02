@@ -1874,6 +1874,9 @@ class TestXYTraversalClearance:
         stock = rect_stock(-16.0, -16.0, 56.0, 46.0, 0.0, 8.0)
         tp = get_strategy("waterline_finishing").run(
             mesh_operation(c_shape_mesh(), [0.0], 8.0, 0.0, stock))
+        # ...and the run it measured is the refusal the fixture exists for.
+        assert tp.moves == []
+        assert tp.params["traverse_violations"]
         assert calls, "no chord was measured at all"
         assert calls[0][:2] == (0.0, 0.0)      # the program start position
         assert calls[0][4] == 5.0              # measured at clearance_height
