@@ -892,7 +892,8 @@ def validate_config(cfg: dict[str, Any], stock: BBox | None,
                 f"{first.top_z} + top_height_offset="
                 f"{cycle.top_height_offset}): the entry descent is an "
                 f"unfed RAPID from the retract plane and would crash "
-                f"through material - set top_z at or above the stock "
+                f"through material - set top_z so the entry "
+                f"(top_z + top_height_offset) is at or above the stock "
                 f"surface{more}")
 
     if cycle.hole_diameter_minimum > cycle.hole_diameter_maximum:
