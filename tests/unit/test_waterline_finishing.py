@@ -2020,3 +2020,33 @@ class TestXYTraversalClearance:
         for x0, y0, x1, y1 in traverses:
             assert real(mesh, x0, y0, x1, y1, clearance) == [], \
                 (x0, y0, x1, y1)
+
+    def test_a_chord_riding_a_wall_is_decided_by_the_query_nudge(self):
+        """The collinear branch, and the asymmetry the docstring declares.
+
+        A chord running ALONG a wall shares its line with the section
+        segment that wall cuts, so the segment/segment test has no single
+        crossing to report: the branch takes the overlap's TWO ENDS as the
+        pierces (that is what the list below shows - each of the wall's two
+        triangles reports both).  What the overlap itself reads as is then
+        decided by ``point_in_mesh`` at each interval midpoint, i.e. by
+        which side of the wall the column query's ``CLEARANCE_NUDGE_MM``
+        lands on.  Measured on ``box(0,0,0)-(4,4,8)`` at ``z = 2`` and
+        pinned here because ``chord_crossings``' docstring states it: the
+        ``y = 0`` and ``x = 0`` walls read SOLID, the ``x = 4`` and
+        ``y = 4`` walls read clear (the nudge is +x, +y).
+        """
+        mesh = box_mesh((0.0, 0.0, 0.0), (4.0, 4.0, 8.0))
+        crossings = wlf.chord_crossings(mesh, -2.0, 0.0, 6.0, 0.0, 2.0)
+        assert crossings == pytest.approx([2.0, 2.0, 3.0, 3.0, 6.0, 6.0])
+
+        def bands(x0, y0, x1, y1):
+            out = wlf.blocked_chord(mesh, x0, y0, x1, y1, 2.0)
+            return [list(b) for b in out]
+
+        assert bands(-2.0, 0.0, 6.0, 0.0) == [[pytest.approx(2.0),
+                                               pytest.approx(6.0)]]
+        assert bands(0.0, -2.0, 0.0, 6.0) == [[pytest.approx(2.0),
+                                               pytest.approx(6.0)]]
+        assert bands(4.0, -2.0, 4.0, 6.0) == []
+        assert bands(-2.0, 4.0, 6.0, 4.0) == []
