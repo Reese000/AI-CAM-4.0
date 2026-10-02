@@ -118,13 +118,14 @@ Honest limits (declared, not hidden)
       question - one plane, no geometry - and it is F1's question exactly;
       it is exact for a prism and only insufficient for a mesh, whose
       material top is not a plane, which is why the mesh needs both guards
-      above.  This module does not re-run the flat test itself because a
-      ``profile`` source carries NO z extent (``_material_boundaries``
-      returns its polygon at every height) and no rule ties
-      ``clearance_height`` to ``top_of_stock``, so there is no declared
-      material top here to measure against.  The residual - a clearance
-      plane below a prismatic part's top, with a chord crossing it - is
-      declared, not silently skipped;
+      above.  This module does not re-run the flat test itself because
+      NEITHER prismatic source carries a z extent in this module's model -
+      ``_material_boundaries`` returns the profile polygon and the stock
+      rectangle at EVERY height - and no rule ties ``clearance_height`` to
+      ``top_of_stock``, so there is no declared material top here to
+      measure against.  The residual - a clearance plane below a prismatic
+      part's top, with a chord crossing it - is declared, not silently
+      skipped;
   (b) the program's FIRST rapid is measured from ``(0, 0)``: the start
       ``post/ir.py`` assumes for move 0 and the one the simulation replays
       from.  The machine's real park position is not knowable here;
@@ -1391,7 +1392,15 @@ def chord_crossings(mesh: dict, x0: float, y0: float, x1: float, y1: float,
       section's outline still comes out complete;
     * a section segment COLLINEAR with the chord - the chord running along a
       wall - reports both ends of the overlap, so the intervals either side
-      of it are still separated;
+      of it are still separated.  What the overlap ITSELF reads as is then
+      decided by :func:`point_in_mesh` at the interval midpoint, i.e. by
+      which side of the wall the column query's nudge lands on: an
+      asymmetry worth naming, because it means "riding a wall" has no one
+      answer here (measured: on an axis-aligned box the chord along
+      ``y = 0`` reads SOLID and the same chord along ``x = 4`` reads
+      clear).  It is measure-zero, the axis is on the surface either way,
+      and LATERAL clearance is declared out of contract below - but it is
+      not a guarantee, so it is documented rather than smoothed over;
     * unlike the column query this one is deliberately NOT nudged: the pierce
       list only SPLITS the chord, it never decides membership (see
       :func:`blocked_chord`).  A chord that passes exactly through the point
@@ -2370,8 +2379,11 @@ class WaterlineFinishingStrategy(BaseStrategy):
             # below the stock top.
             #
             # Entry-column violations are listed FIRST so the wording and
-            # the ordering t_3b02b4a3's tests pin keep their meaning; a
-            # traversal-only refusal gets a header that names both guards.
+            # the ordering t_3b02b4a3's tests pin keep their meaning: only
+            # a COLUMN-ONLY refusal keeps the parent's header verbatim.
+            # A refusal that also carries a traverse violation takes the
+            # header below instead, which lists whichever guards fired -
+            # column first - because it has to describe both.
             violations = clearance_violations + traverse_violations
             more = (f"  (+{len(violations) - 1} more)"
                     if len(violations) > 1 else "")

@@ -1965,3 +1965,55 @@ class TestXYTraversalClearance:
         assert tp.params["traverse_checks"] == 0
         assert tp.params["traverse_violations"] == []
         assert "error" not in tp.params
+
+    def test_every_emitted_xy_rapid_at_clearance_was_measured_and_clear(
+            self, monkeypatch):
+        """The horizontal analogue of the parent's re-measurement.
+
+        ``test_no_emitted_vertical_move_crosses_material`` re-measures every
+        Z-only segment of the DELIVERED toolpath after the fact; this walks
+        the delivered moves the same way for the horizontal ones.  Every
+        rapid whose end sits at ``clearance_height`` and whose XY changed is
+        a traverse, and each one must (a) have been measured with exactly
+        that (previous XY -> end XY) pair, in emission order - which pins
+        the ``prev_xy`` bookkeeping for loops 2..N, not just the program's
+        first rapid - and (b) come back clear when it is re-measured
+        independently of the guard.
+
+        Fixture: plate + boss, whose section SHRINKS with height, run at
+        ``clearance_height = 5`` INSIDE the part's z range (the boss stands
+        4..8), so the chord has real material available to cross and the
+        toolpath still has to come out clean.
+        """
+        mesh = merge_meshes(box_mesh((0.0, 0.0, 0.0), (60.0, 40.0, 4.0)),
+                            box_mesh((20.0, 15.0, 4.0), (40.0, 25.0, 8.0)))
+        stock = rect_stock(0.0, 0.0, 60.0, 40.0, 0.0, 8.0)
+        calls: list[tuple] = []
+        real = wlf.blocked_chord
+
+        def spy(m, x0, y0, x1, y1, z, bounds=None):
+            calls.append((x0, y0, x1, y1, z))
+            return real(m, x0, y0, x1, y1, z, bounds)
+
+        monkeypatch.setattr(wlf, "blocked_chord", spy)
+        tp = get_strategy("waterline_finishing").run(
+            mesh_operation(mesh, [8.0, 4.0, 0.0], 8.0, 0.0, stock))
+        assert "error" not in tp.params
+        assert tp.params["traverse_violations"] == []
+
+        clearance = 5.0
+        traverses: list[tuple[float, float, float, float]] = []
+        px = py = 0.0                      # post/ir.py's start for move 0
+        for mv in tp.moves:
+            if mv.end.z == clearance and (mv.end.x != px or mv.end.y != py):
+                traverses.append((px, py, mv.end.x, mv.end.y))
+            px, py = mv.end.x, mv.end.y
+        assert len(traverses) >= 2, traverses
+        # (a) every one was measured, with exactly those endpoints, in order
+        assert [(x0, y0, x1, y1) for x0, y0, x1, y1, z in calls] == traverses
+        assert all(z == clearance for *_, z in calls)
+        assert tp.params["traverse_checks"] == len(calls)
+        # (b) ...and every one of them is clear, measured from scratch
+        for x0, y0, x1, y1 in traverses:
+            assert real(mesh, x0, y0, x1, y1, clearance) == [], \
+                (x0, y0, x1, y1)
