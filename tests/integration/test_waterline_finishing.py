@@ -82,35 +82,14 @@ def _box_triangles(p0, p1):
     return triangles
 
 
-def write_plate_stl(path: Path) -> Path:
-    """Write the test plate as an ASCII STL the kernel can parse."""
-    p0, p1 = PLATE[:3], PLATE[3:]
-    lines = ["solid plate"]
-    for normal, corners in _box_triangles(p0, p1):
-        lines.append(
-            "  facet normal {} {} {}".format(*[f"{v:g}" for v in normal])
-        )
-        lines.append("    outer loop")
-        for corner in corners:
-            lines.append("      vertex {} {} {}".format(*[f"{v:g}" for v in corner]))
-        lines.append("    endloop")
-        lines.append("  endfacet")
-    lines.append("endsolid plate")
-    path.write_text("\n".join(lines) + "\n")
-    return path
+def _write_boxes_stl(path: Path, boxes, name: str) -> Path:
+    """Write an axis-aligned box soup as one ASCII STL the kernel can parse.
 
-
-def write_overhang_stl(path: Path) -> Path:
-    """A narrow plate under a WIDER one: the cross-section grows with height.
-
-    The two boxes only touch at ``z = 4``, so the parsed mesh stays a valid
-    triangle soup for the even-odd rules (and for the entry-column ray cast,
-    which is what this fixture is for: the descent at the lower level's loop
-    start point passes through material above it).
+    Every fixture part in this file is a union of axis-aligned boxes that
+    only touch, which keeps every shell closed and the soup watertight in
+    the even-odd sense the section machinery and the clearance guards use.
     """
-    boxes = [((20.0, 15.0, 0.0), (40.0, 25.0, 4.0)),
-             ((10.0, 5.0, 4.0), (50.0, 35.0, 8.0))]
-    lines = ["solid overhang"]
+    lines = [f"solid {name}"]
     for p0, p1 in boxes:
         for normal, corners in _box_triangles(p0, p1):
             lines.append(
@@ -123,9 +102,45 @@ def write_overhang_stl(path: Path) -> Path:
                 )
             lines.append("    endloop")
             lines.append("  endfacet")
-    lines.append("endsolid overhang")
+    lines.append(f"endsolid {name}")
     path.write_text("\n".join(lines) + "\n")
     return path
+
+
+def write_plate_stl(path: Path) -> Path:
+    """Write the test plate as an ASCII STL the kernel can parse."""
+    p0, p1 = PLATE[:3], PLATE[3:]
+    return _write_boxes_stl(path, [(p0, p1)], "plate")
+
+
+def write_overhang_stl(path: Path) -> Path:
+    """A narrow plate under a WIDER one: the cross-section grows with height.
+
+    The two boxes only touch at ``z = 4``, so the parsed mesh stays a valid
+    triangle soup for the even-odd rules (and for the entry-column ray cast,
+    which is what this fixture is for: the descent at the lower level's loop
+    start point passes through material above it).
+    """
+    boxes = [((20.0, 15.0, 0.0), (40.0, 25.0, 4.0)),
+             ((10.0, 5.0, 4.0), (50.0, 35.0, 8.0))]
+    return _write_boxes_stl(path, boxes, "overhang")
+
+
+def write_c_shape_stl(path: Path) -> Path:
+    """A NON-CONVEX part: a spine with two legs, ONE height.
+
+    Spine ``-10..50 x -10..5``, legs ``-10..5 x 5..40`` and ``35..50 x
+    5..40``, all ``z 0..8``.  The section does not change with height, so
+    every entry column is clear (the start points sit ``R`` outside the
+    part).  What makes this the chord guard's fixture is that ``(0, 0)`` -
+    the program start - sits INSIDE the spine, so the first rapid at
+    ``clearance_height = 5`` has to cross material to reach a loop start
+    point, and no chord can reach into the mouth of the C either.
+    """
+    boxes = [((-10.0, -10.0, 0.0), (50.0, 5.0, 8.0)),
+             ((-10.0, 5.0, 0.0), (5.0, 40.0, 8.0)),
+             ((35.0, 5.0, 0.0), (50.0, 40.0, 8.0))]
+    return _write_boxes_stl(path, boxes, "c_shape")
 
 
 def stock_from_mesh(mesh, margin: float = 0.0) -> BBox:
@@ -330,4 +345,25 @@ class TestF2EndToEnd:
         assert "error" in tp.params, "the descent through material was emitted"
         assert "rapid clearance" in tp.params["error"]
         assert tp.params["clearance_violations"]
+        assert tp.moves == [], f"moves were emitted: {len(tp.moves)}"
+
+    def test_a_c_shaped_stl_is_refused_for_the_xy_traverse(self, tmp_path):
+        """A NON-CONVEX part: the traverse at clearance crosses material.
+
+        Same pipeline - ``parse_stl`` (numpy vertices, the real input
+        shape), ``run`` - but the part is a C and the section does not
+        change with height, so the entry columns are all clear and this
+        refusal has to come from the XY-traverse guard: the program's first
+        rapid starts at ``(0, 0)`` inside the spine and cannot reach a loop
+        start point without crossing material at ``Z5`` (``clearance`` is
+        5.0 on an 8 mm part).  Nothing may be emitted.
+        """
+        _, _, tp = toolpath_from_stl(tmp_path, writer=write_c_shape_stl)
+        assert tp.params["profile_source"] == "mesh"
+        assert "error" in tp.params, "a traverse through material was emitted"
+        assert "rapid clearance" in tp.params["error"]
+        assert "XY traverse at Z5" in tp.params["error"]
+        assert tp.params["traverse_violations"]
+        assert tp.params["traverse_checks"] >= 1
+        assert tp.params["clearance_violations"] == []  # the column guard
         assert tp.moves == [], f"moves were emitted: {len(tp.moves)}"

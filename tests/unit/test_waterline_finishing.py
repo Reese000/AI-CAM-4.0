@@ -1743,3 +1743,225 @@ class TestRapidClearance:
         assert tp.params["clearance_checks"] == 6   # still measured, still clear
         assert tp.params["clearance_violations"] == []
         assert tp.params["moves"] > 0
+
+
+# ---------------------------------------------------------------------------
+# XY-traversal clearance at clearance_height - the chord that brings the tool
+# from where it was to the next loop start point (declared limitation (1) of
+# t_3b02b4a3, follow-up card t_6020987d)
+# ---------------------------------------------------------------------------
+
+def c_shape_mesh() -> dict:
+    """A C (spine + two legs) as three closed boxes: a NON-CONVEX footprint.
+
+    Spine ``-10..50 x -10..5``, legs ``-10..5 x 5..40`` and ``35..50 x
+    5..40``, all ``z 0..8``.  One height, so the section does not change
+    with z and every column at a point outside the footprint is clear - the
+    entry-column guard has NOTHING to say about this part, which is what
+    makes it the right fixture for the chord guard alone.  ``(0, 0)`` - the
+    program start post/ir.py and the simulation both assume - sits INSIDE
+    the spine, so the program's first rapid at ``clearance_height`` has to
+    cross material to reach any start point at all.  The three boxes only
+    touch, so the soup stays watertight in the parity sense (the rule
+    ``overhang_mesh`` relies on).
+    """
+    return merge_meshes(box_mesh((-10.0, -10.0, 0.0), (50.0, 5.0, 8.0)),
+                        box_mesh((-10.0, 5.0, 0.0), (5.0, 40.0, 8.0)),
+                        box_mesh((35.0, 5.0, 0.0), (50.0, 40.0, 8.0)))
+
+
+class TestXYTraversalClearance:
+    """The chord guard: the primitive first, then the card's fixtures."""
+
+    def test_a_chord_across_a_c_shape_is_blocked_in_two_spans(self):
+        """Material, air, material - the disjoint bands have to stay apart.
+
+        The chord runs along ``y = 27.5`` from ``x = -2`` to ``x = 62``: it
+        STARTS inside the west leg (``-10..5``), leaves it at ``x = 5``, is
+        in the mouth of the C until ``x = 35``, crosses the east leg to
+        ``x = 50``, and ends in air.  Distances are measured from the
+        chord's own start, so the solid spans are ``0..7`` and ``37..52``.
+        """
+        mesh = c_shape_mesh()
+        bands = wlf.blocked_chord(mesh, -2.0, 27.5, 62.0, 27.5, 5.0)
+        assert len(bands) == 2, bands
+        assert [d for band in bands for d in band] == \
+            pytest.approx([0.0, 7.0, 37.0, 52.0])
+        # The same chord ABOVE the part crosses nothing ...
+        assert wlf.blocked_chord(mesh, -2.0, 27.5, 62.0, 27.5, 10.0) == []
+        # ... and one that stays in the mouth of the C crosses nothing either
+        assert wlf.blocked_chord(mesh, 10.0, 30.0, 30.0, 30.0, 5.0) == []
+
+    def test_a_chord_pierced_twice_at_one_point_still_reads_solid(self):
+        """The tie the column query needs a nudge for, settled without one.
+
+        ``box_mesh``'s ``+X`` wall at ``x = 4`` is two triangles sharing the
+        edge ``(4,0,0)-(4,4,8)``, whose section at ``z = 2`` is the point
+        ``(4, 1)`` - exactly where this chord crosses the wall, so BOTH
+        triangles report that pierce and the list carries it twice.  A
+        parity counted over the list would then read the solid as AIR (two
+        crossings above the midpoint is even).  ``blocked_chord`` only uses
+        the list to SPLIT the chord and asks ``point_in_mesh`` about each
+        interval, so the duplicate collapses into a zero-length interval and
+        the answer stays right - which is also why this query is not nudged
+        (``chord_crossings``' docstring).
+        """
+        mesh = box_mesh((0.0, 0.0, 0.0), (4.0, 4.0, 8.0))
+        crossings = wlf.chord_crossings(mesh, -2.0, 1.0, 6.0, 1.0, 2.0)
+        assert crossings == pytest.approx([2.0, 6.0, 6.0])
+        bands = wlf.blocked_chord(mesh, -2.0, 1.0, 6.0, 1.0, 2.0)
+        assert len(bands) == 1, bands
+        assert list(bands[0]) == pytest.approx([2.0, 6.0])
+
+    def test_a_chord_riding_the_top_face_is_clear_but_one_below_it_is_not(
+            self):
+        """A material top AT ``clearance_height`` is a graze, not a hit.
+
+        The boundary at ``z = 8`` is still found (the walls carry it, the
+        in-plane top face is skipped as an area), but a tool exactly on the
+        top face is not INSIDE the solid - the same "crossings STRICTLY
+        above, with ``Z_TOLERANCE_MM`` slack" rule ``point_in_mesh``
+        inherits from ``blocked_span``.  A plane a tenth of a millimetre
+        lower is solid, because that is where the material really is.
+        """
+        mesh = box_mesh((0.0, 0.0, 0.0), (4.0, 4.0, 8.0))
+        assert wlf.chord_crossings(mesh, -2.0, 2.0, 6.0, 2.0, 8.0) == \
+            pytest.approx([2.0, 6.0])
+        assert wlf.blocked_chord(mesh, -2.0, 2.0, 6.0, 2.0, 8.0) == []
+        bands = wlf.blocked_chord(mesh, -2.0, 2.0, 6.0, 2.0, 7.9)
+        assert len(bands) == 1, bands
+        assert list(bands[0]) == pytest.approx([2.0, 6.0])
+
+    def test_a_chord_that_travels_nowhere_or_leaves_the_footprint_scans_nothing(
+            self, monkeypatch):
+        """Both fast paths, and neither may be a silent skip of real work.
+
+        A zero-length chord is no travel at all; a chord whose XY box misses
+        the mesh's vertex box cannot be pierced (no projection reaches it)
+        and must not ray-cast anything - a spy that blows up proves it.
+        """
+        mesh = c_shape_mesh()
+
+        def boom(*args, **kwargs):
+            raise AssertionError("the scan should have been skipped")
+
+        monkeypatch.setattr(wlf, "chord_crossings", boom)
+        monkeypatch.setattr(wlf, "column_crossings", boom)
+        assert wlf.blocked_chord(mesh, 3.0, 3.0, 3.0, 3.0, 5.0) == []
+        assert wlf.blocked_chord(mesh, 100.0, 100.0, 120.0, 100.0,
+                                 5.0) == []
+        # ...and a chord that DOES reach the part still works.
+        monkeypatch.undo()
+        assert wlf.blocked_chord(mesh, -20.0, 27.5, 62.0, 27.5, 5.0)
+
+    def test_the_program_first_rapid_is_measured_from_the_machine_start(
+            self, monkeypatch):
+        """The card's "including the program's first one" - and from WHERE.
+
+        ``post/ir.py`` assumes move 0 starts at ``(0, 0)``
+        (``prev_x = ... if idx > 0 else 0.0``) and ``simulation/engine.py``
+        replays from ``current_x = 0.0``; the guard has to use the same
+        convention or the first rapid is measured from nowhere.
+        """
+        calls: list[tuple] = []
+        real = wlf.blocked_chord
+
+        def spy(m, x0, y0, x1, y1, z, bounds=None):
+            calls.append((x0, y0, x1, y1, z))
+            return real(m, x0, y0, x1, y1, z, bounds)
+
+        monkeypatch.setattr(wlf, "blocked_chord", spy)
+        stock = rect_stock(-16.0, -16.0, 56.0, 46.0, 0.0, 8.0)
+        tp = get_strategy("waterline_finishing").run(
+            mesh_operation(c_shape_mesh(), [0.0], 8.0, 0.0, stock))
+        assert calls, "no chord was measured at all"
+        assert calls[0][:2] == (0.0, 0.0)      # the program start position
+        assert calls[0][4] == 5.0              # measured at clearance_height
+
+    def test_a_traverse_across_a_c_shaped_part_is_refused(self):
+        """The card's fixture (a): no rapid may be emitted through material.
+
+        C-part, one level at ``z = 0``, ``clearance_height = 5`` on a part
+        8 mm tall, program start ``(0, 0)`` inside the spine.  Every ENTRY
+        column is clear - the part is prismatic and every start point sits
+        ``R`` outside it - so ``clearance_violations`` staying empty is what
+        makes this a test of the chord guard and not of its parent's.
+        """
+        mesh = c_shape_mesh()
+        stock = rect_stock(-16.0, -16.0, 56.0, 46.0, 0.0, 8.0)
+        tp = get_strategy("waterline_finishing").run(
+            mesh_operation(mesh, [0.0], 8.0, 0.0, stock))
+        assert tp.moves == [], "a traverse through material was emitted"
+        assert "error" in tp.params
+        assert tp.params["clearance_violations"] == []   # the column guard
+        assert tp.params["traverse_violations"]          # ...this one fired
+        assert tp.params["traverse_checks"] == 1
+        err = tp.params["error"]
+        assert "rapid clearance" in err
+        assert "XY traverse at Z5" in err                # WHICH move
+        assert "the program start" in err                # ...from where
+        assert "material in" in err                      # ...through what
+        assert "pass z=0" in err                         # ...on which pass
+
+    def test_the_same_traverse_above_the_part_still_emits(self):
+        """The control: one plane higher, nothing to cross, toolpath out.
+
+        Identical fixture with ``clearance_height`` raised above the 8 mm
+        part - the guard must be invisible where it has nothing to say, and
+        ``traverse_checks`` must show that it RAN rather than never fired.
+        """
+        stock = rect_stock(-16.0, -16.0, 56.0, 46.0, 0.0, 8.0)
+        op = mesh_operation(c_shape_mesh(), [0.0], 8.0, 0.0, stock)
+        op.clearance_height = 10.0          # above the part, not inside it
+        tp = get_strategy("waterline_finishing").run(op)
+        assert "error" not in tp.params
+        assert tp.params["traverse_checks"] >= 1        # it RAN
+        assert tp.params["traverse_violations"] == []
+        assert tp.params["clearance_violations"] == []
+        assert tp.moves
+
+    def test_a_refusal_can_name_a_column_and_a_traverse(self):
+        """On the overhang fixture BOTH guards fire - message keeps the
+        entry-column violation first.
+
+        ``clearance_violations`` and ``traverse_violations`` are separate
+        lists with separate counters, and the error leads with the column
+        one so the wording and the ordering ``t_3b02b4a3``'s tests pin do
+        not move; the header still names both guards.
+        """
+        mesh = overhang_mesh()
+        stock = rect_stock(0.0, 0.0, 60.0, 40.0, 0.0, 8.0)
+        tp = get_strategy("waterline_finishing").run(
+            mesh_operation(mesh, [8.0, 4.0, 0.0], 8.0, 0.0, stock))
+        assert tp.moves == []
+        assert tp.params["clearance_violations"]        # the parent's guard
+        assert tp.params["traverse_violations"]         # ...and this card's
+        assert tp.params["traverse_checks"] == 2
+        err = tp.params["error"]
+        assert "rapid from clearance" in err            # FIRST = the column
+        assert "an XY traverse at clearance_height crosses material" in err
+        first = tp.params["traverse_violations"][0]
+        assert "XY traverse at Z5" in first
+        assert "material in" in first
+
+    def test_a_prismatic_source_is_never_chord_checked(self):
+        """The documented fast path of the card, in both flavours.
+
+        ``profile`` and stock-footprint sources are prismatic, so they are
+        not chord-checked at all and report ``traverse_checks == 0`` - the
+        number that tells a passing fast path from a check that never ran
+        (``clearance_checks`` plays that role for the column guard).
+        """
+        tp = get_strategy("waterline_finishing").run(operation())
+        assert tp.params["profile_source"] == "profile"
+        assert tp.params["traverse_checks"] == 0
+        assert tp.params["traverse_violations"] == []
+        assert "error" not in tp.params
+
+        stock_only = operation()
+        stock_only.extra_args.pop("profile")
+        tp = get_strategy("waterline_finishing").run(stock_only)
+        assert tp.params["profile_source"] == "stock"
+        assert tp.params["traverse_checks"] == 0
+        assert tp.params["traverse_violations"] == []
+        assert "error" not in tp.params

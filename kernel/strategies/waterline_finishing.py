@@ -91,21 +91,63 @@ Honest limits (declared, not hidden)
   avoid it (for a closed contour that is only a rotation of the start
   index), and is deliberately NOT done here: the strategy refuses rather
   than silently relocating the plunge.
-* What that check does NOT cover, declared: (1) the XY TRAVERSAL between two
-  loop start points, which happens at ``clearance_height`` - if that plane
-  sits below the mesh top, a chord between two start points can cross
-  material at that Z; F1's export-time guard
-  (``tools.export_f1_realpart.find_rapid_clearance_violations``) is the flat
-  cousin of this check and F2 has no export-time run of its own yet.
-  (2) LATERAL clearance: the check tests the tool AXIS, the point the path
-  actually descends through.  Material that reaches within ``R`` of the axis
-  without containing it is not reported.  Up to the flute's reach at the
-  cutting level that is a property of the LEVEL, not of the entry - the cut
-  puts the flute in the same place anyway, so no entry could have been safe
-  there - but material sitting HIGHER than the flute reaches at ``fp.z``
-  (still below ``clearance_height``) is swept by the entry descent and never
-  touched by the cut: an entry-only hazard this check cannot see without the
-  tool's stick-out, which this module does not know.  Declared, not patched.
+* The XY TRAVERSAL between two loop start points - which happens AT
+  ``clearance_height``, and is also the program's very first move, from the
+  machine start position - IS now checked (:func:`blocked_chord`, card
+  ``t_6020987d``): before the rapid that brings the tool to a start point is
+  emitted, the straight segment from where the tool WAS to that point is
+  sliced against the mesh's section AT ``clearance_height``, and a chord
+  that crosses material refuses the toolpath with an error ``ToolpathData``
+  naming the traverse.  Same response, and the same argument, as the entry
+  column above: re-routing the chord would mean either inventing a traverse
+  plane ABOVE the user's own ``clearance_height`` (this module cannot bound
+  the machine's Z limit, and silently overriding a user-declared safety
+  plane is not a guard's job) or planning a free path around the part in XY
+  (a path-planning problem, not a clearance check).  The chord is not part
+  of the cut, so the fix that belongs to the caller is the actionable one:
+  raise the clearance plane above what the traverse crosses - which is
+  exactly what F1's export-time guard
+  (``tools.export_f1_realpart.find_rapid_clearance_violations``) tells the
+  same user about a clearance plane below the stock top.  Declared about
+  this check:
+
+  (a) PRISMATIC sources (``profile``, stock footprint) are NOT chord-checked
+      - a fast path, and here is why: their section does not change with
+      height, so a traverse at ``clearance_height`` can only meet material
+      if that plane lies inside the material's z range.  That is a FLAT
+      question - one plane, no geometry - and it is F1's question exactly;
+      it is exact for a prism and only insufficient for a mesh, whose
+      material top is not a plane, which is why the mesh needs both guards
+      above.  This module does not re-run the flat test itself because a
+      ``profile`` source carries NO z extent (``_material_boundaries``
+      returns its polygon at every height) and no rule ties
+      ``clearance_height`` to ``top_of_stock``, so there is no declared
+      material top here to measure against.  The residual - a clearance
+      plane below a prismatic part's top, with a chord crossing it - is
+      declared, not silently skipped;
+  (b) the program's FIRST rapid is measured from ``(0, 0)``: the start
+      ``post/ir.py`` assumes for move 0 and the one the simulation replays
+      from.  The machine's real park position is not knowable here;
+  (c) it is measured at ``clearance_height`` - the plane the rapid ENDS on.
+      A ``G0`` carrying X, Y and Z in one block actually travels a diagonal
+      from wherever the machine started, and how the controller
+      interpolates a simultaneous-axis rapid is not this module's to model;
+      the column guard covers the vertical half at the destination;
+  (d) cost: one O(faces) slice per traverse plus one column ray per interval
+      that slice produces (~10 ms / ~37 ms per ray at 41 k / 161 k faces,
+      measured for the entry guard), and NOTHING when the chord leaves the
+      mesh's XY box or the XY does not change at all (a loop that starts
+      where the previous one ended travels nowhere).
+* What the clearance checks do NOT cover, declared: LATERAL clearance: the
+  checks test the tool AXIS, the point the path actually descends through.
+  Material that reaches within ``R`` of the axis without containing it is
+  not reported.  Up to the flute's reach at the cutting level that is a
+  property of the LEVEL, not of the entry - the cut puts the flute in the
+  same place anyway, so no entry could have been safe there - but material
+  sitting HIGHER than the flute reaches at ``fp.z`` (still below
+  ``clearance_height``) is swept by the entry descent and never touched by
+  the cut: an entry-only hazard this check cannot see without the tool's
+  stick-out, which this module does not know.  Declared, not patched.
 * A `finish_mode` of ``scallop`` cuts rings on the FLOOR only (``scallop_z``,
   default the deepest level); it is a horizontal iso-offset, not a 3D
   constant-scallop surface finishing.
@@ -1303,6 +1345,217 @@ def blocked_column(mesh: dict, x: float, y: float,
     return blocked_span(column_crossings(mesh, x, y), z_from, z_to)
 
 
+def point_in_mesh(mesh: dict, x: float, y: float, z: float) -> bool:
+    """Is the point ``(x, y, z)`` inside ``mesh``?
+
+    Casts :func:`column_crossings` and counts the pierces STRICTLY above
+    ``z`` - the even-odd rule :func:`column_crossings` documents - with the
+    same :data:`Z_TOLERANCE_MM` slack :func:`blocked_span` gives a span's
+    lower edge: a face that ENDS at ``z`` can come back a few ulps above it,
+    and a clearance check that reports round-off as material refuses a clean
+    part (the plate + boss fixture is the case that produced the slack).
+    The query inherits the nudge :func:`column_crossings` applies, so a point
+    on a shared face diagonal is attributed to exactly one triangle.
+    """
+    return sum(1 for c in column_crossings(mesh, x, y)
+               if c > z + Z_TOLERANCE_MM) % 2 == 1
+
+
+def chord_crossings(mesh: dict, x0: float, y0: float, x1: float, y1: float,
+                    z: float,
+                    bounds: tuple[float, float, float, float] | None = None,
+                    ) -> list[float]:
+    """Every distance along the chord ``(x0, y0) -> (x1, y1)`` at the height
+    ``z`` where that horizontal chord pierces ``mesh``'s cross-section.
+
+    The horizontal dual of :func:`column_crossings`: casting a VERTICAL line
+    through the triangle soup returns pierce heights, casting a HORIZONTAL
+    chord through it returns pierce distances in mm along the chord.  Each
+    triangle is cut by the plane ``z`` into a segment, and that segment is
+    intersected with the chord - a triangle/plane then segment/segment test.
+
+    Why a slice of the soup and not ``mesh_section_loops(mesh, z)``: the
+    section machinery is a rasterised, chained, level-aware answer tuned for
+    cutting, and this question is a pure "where does the boundary cross this
+    line" one - it needs the raw pierces, not a contour.
+
+    Rules, and why:
+
+    * a triangle that only touches the plane (all three vertices on one
+      side, or a single vertex exactly on it) contributes no segment and is
+      skipped;
+    * a triangle lying IN the plane - a horizontal face - would intersect it
+      in an AREA, not a segment: it cannot be pierced transversally, so it is
+      skipped exactly as :func:`column_crossings` skips a triangle degenerate
+      in XY.  Its boundary is carried by the faces meeting it, so the
+      section's outline still comes out complete;
+    * a section segment COLLINEAR with the chord - the chord running along a
+      wall - reports both ends of the overlap, so the intervals either side
+      of it are still separated;
+    * unlike the column query this one is deliberately NOT nudged: the pierce
+      list only SPLITS the chord, it never decides membership (see
+      :func:`blocked_chord`).  A chord that passes exactly through the point
+      where two triangles of one flat face meet therefore reports that pierce
+      TWICE, and a duplicate merely leaves a zero-length interval, which
+      :func:`blocked_chord` skips - the even-odd answer can never flip on a
+      tie.  The column query has no such luck: there the pierce list IS the
+      answer, which is why it needs :data:`CLEARANCE_NUDGE_MM`;
+    * a whole chord outside :func:`mesh_xy_bounds` cannot be pierced at all
+      and returns immediately (the same argument the column fast path uses),
+      and every triangle is bounding-box rejected first, so the scan stays
+      O(faces) with a cheap constant;
+    * like every other geometric rule in this module it assumes a CLOSED,
+      non-overlapping mesh: interpenetrating shells XOR through one another
+      under the even-odd rule (declared out of contract everywhere here).
+
+    ``bounds`` is the caller's precomputed :func:`mesh_xy_bounds` result;
+    ``None`` means "not computed yet" and is computed here.
+    """
+    verts = mesh.get("vertices")
+    faces = mesh.get("faces")
+    if verts is None or faces is None:
+        raise ValueError("mesh must carry 'vertices' and 'faces'")
+    dx, dy = x1 - x0, y1 - y0
+    length = math.hypot(dx, dy)
+    if length == 0.0:
+        return []
+    if bounds is None:
+        bounds = mesh_xy_bounds(mesh)
+    if bounds is None:
+        return []                       # no vertices: nothing to pierce
+    lo_x, lo_y, hi_x, hi_y = bounds
+    c_lo_x, c_hi_x = (x0, x1) if x0 <= x1 else (x1, x0)
+    c_lo_y, c_hi_y = (y0, y1) if y0 <= y1 else (y1, y0)
+    if (c_hi_x < lo_x or c_lo_x > hi_x
+            or c_hi_y < lo_y or c_lo_y > hi_y):
+        return []                       # the chord never enters the box
+    hits: list[float] = []
+    for tri in faces:
+        a = verts[int(tri[0])]
+        b = verts[int(tri[1])]
+        c = verts[int(tri[2])]
+        ax, ay, az = float(a[0]), float(a[1]), float(a[2])
+        bx, by, bz = float(b[0]), float(b[1]), float(b[2])
+        cx, cy, cz = float(c[0]), float(c[1]), float(c[2])
+        if (min(ax, bx, cx) > c_hi_x or max(ax, bx, cx) < c_lo_x
+                or min(ay, by, cy) > c_hi_y or max(ay, by, cy) < c_lo_y):
+            continue
+        z_lo, z_hi = min(az, bz, cz), max(az, bz, cz)
+        if z_lo > z or z_hi < z:
+            continue                    # the plane misses this triangle
+        if z_lo == z_hi:
+            continue                    # in the plane: an area, not a pierce
+        # Triangle ∩ plane z -> the segment (p, q): one point per crossing of
+        # an edge, plus a vertex sitting exactly on the plane.  Exactly two
+        # points come out of every reachable sign pattern (0/0/+ gives both
+        # on-plane vertices, 0/+/- gives the vertex and the crossing, ...
+        da, db, dc = az - z, bz - z, cz - z
+        pts: list[tuple[float, float]] = []
+        for d0, d1, px, py, qx, qy in (
+                (da, db, ax, ay, bx, by),
+                (db, dc, bx, by, cx, cy),
+                (dc, da, cx, cy, ax, ay)):
+            if d0 == 0.0:
+                pts.append((px, py))
+            if d0 * d1 < 0.0:
+                t = d0 / (d0 - d1)
+                pts.append((px + t * (qx - px), py + t * (qy - py)))
+        if len(pts) < 2:
+            continue                    # a vertex-only touch: no segment
+        p, q = pts[0], pts[-1]
+        ex, ey = q[0] - p[0], q[1] - p[1]
+        wx, wy = p[0] - x0, p[1] - y0
+        den = dx * ey - dy * ex
+        if den != 0.0:
+            t = (wx * ey - wy * ex) / den      # along the chord,  0..1
+            u = (wx * dy - wy * dx) / den      # along the section segment
+            if 0.0 <= t <= 1.0 and 0.0 <= u <= 1.0:
+                hits.append(t * length)
+        elif wx * dy - wy * dx == 0.0:
+            # Parallel AND on the same line: the chord runs along the
+            # boundary.  Both ends of the overlap are boundary points, so
+            # they split the chord; the membership of what lies between them
+            # is still decided per interval by point_in_mesh.
+            dot = dx * dx + dy * dy
+            t0 = (wx * dx + wy * dy) / dot
+            t1 = ((p[0] + ex - x0) * dx + (p[1] + ey - y0) * dy) / dot
+            lo, hi = (t0, t1) if t0 <= t1 else (t1, t0)
+            lo, hi = max(lo, 0.0), min(hi, 1.0)
+            if hi > lo:
+                hits.append(lo * length)
+                hits.append(hi * length)
+    hits.sort()
+    return hits
+
+
+def blocked_chord(mesh: dict, x0: float, y0: float, x1: float, y1: float,
+                  z: float,
+                  bounds: tuple[float, float, float, float] | None = None,
+                  ) -> list[tuple[float, float]]:
+    """Solid sub-spans of the horizontal segment ``(x0, y0) -> (x1, y1)``
+    measured at the height ``z``.
+
+    Returns ``[(d_lo, d_hi), ...]`` - distances in MILLIMETRES along the
+    chord, lowest first - and an empty list means the segment crosses no
+    material at that height.  Touching spans merge into one run, disjoint
+    spans stay separate (a chord across both legs of a C crosses material
+    twice with air between), and a zero-length chord is trivially clear.
+
+    The pierce list from :func:`chord_crossings` only decides WHERE the
+    answer can change; membership of each interval is decided by
+    :func:`point_in_mesh` at its midpoint - the nudged, epsilon'd, heavily
+    tested column cast.  That split is what makes this primitive safe on the
+    ties the column query needs a nudge for: a pierce reported twice (a chord
+    through the shared edge of one flat face) leaves a zero-length interval,
+    which is skipped, and a pierce missed entirely would only matter if the
+    midpoint of the interval it should have split disagreed with the answer
+    on the other side - the column cast is the independent witness either
+    way.
+
+    ``bounds`` is the caller's precomputed :func:`mesh_xy_bounds`; ``None``
+    is computed here.  Two things are skipped without a single ray cast:
+    a chord whose XY box misses the mesh's vertex box (no projection reaches
+    it, so neither its pierces nor its midpoints can be inside) and an
+    interval whose MIDPOINT lands outside that box (same argument, applied
+    per interval - the column there is provably empty).  A loop whose start
+    point repeats travels nowhere and never reaches this function.
+    """
+    length = math.hypot(x1 - x0, y1 - y0)
+    if length == 0.0:
+        return []
+    if bounds is None:
+        bounds = mesh_xy_bounds(mesh)
+    if bounds is None:
+        return []
+    lo_x, lo_y, hi_x, hi_y = bounds
+    if ((x0 < lo_x and x1 < lo_x) or (x0 > hi_x and x1 > hi_x)
+            or (y0 < lo_y and y1 < lo_y) or (y0 > hi_y and y1 > hi_y)):
+        return []
+    spans: list[tuple[float, float]] = []
+    ts = [t for t in chord_crossings(mesh, x0, y0, x1, y1, z, bounds)
+          if 0.0 < t < length]
+    edges = [0.0] + sorted(ts) + [length]
+    ux, uy = (x1 - x0) / length, (y1 - y0) / length
+    for a, b in zip(edges, edges[1:]):
+        if b <= a:
+            # A duplicate pierce (the chord passing exactly through the
+            # point where two triangles of one face meet) leaves a
+            # zero-length interval here.  Skipping it cannot hide material:
+            # the intervals on either side are measured on their own
+            # midpoints below, and touching solid runs merge.
+            continue
+        mid = 0.5 * (a + b)
+        xm, ym = x0 + ux * mid, y0 + uy * mid
+        if not (lo_x <= xm <= hi_x and lo_y <= ym <= hi_y):
+            continue                # over air by construction: no ray cast
+        if point_in_mesh(mesh, xm, ym, z):
+            if spans and a <= spans[-1][1]:
+                spans[-1] = (spans[-1][0], b)   # touching runs: one solid
+            else:
+                spans.append((a, b))
+    return spans
+
+
 # ---------------------------------------------------------------------------
 # Pass planning
 # ---------------------------------------------------------------------------
@@ -1977,6 +2230,20 @@ class WaterlineFinishingStrategy(BaseStrategy):
         mesh_bounds = mesh_xy_bounds(mesh) if mesh is not None else None
         clearance_checks = 0
         clearance_violations: list[str] = []
+        # The XY TRAVERSE at ``clearance_height`` - the one rapid the entry
+        # column guard cannot see, because it travels sideways at that plane
+        # instead of down it (card t_6020987d, declared limitation (1) of
+        # t_3b02b4a3).  ``prev_xy`` is where the tool was before the rapid:
+        # for the program's first move that is (0, 0), the start post/ir.py
+        # assumes for move 0 (``prev_x = ... if idx > 0 else 0.0``) and the
+        # one the simulation replays from (``current_x = 0.0``).
+        # ``traverse_checks`` counts the traversals actually measured, so a
+        # test can tell a passing check from one that never ran - and a
+        # prismatic source, which is never chord-checked, reports 0.
+        traverse_checks = 0
+        traverse_violations: list[str] = []
+        prev_x, prev_y = 0.0, 0.0
+        prev_is_start = True
 
         def _rapid(end: Vec3) -> None:
             moves.append(Move(move_type=MoveType.RAPID, end=end, feed=0.0,
@@ -1993,6 +2260,40 @@ class WaterlineFinishingStrategy(BaseStrategy):
                 if len(loop) < 2:
                     continue
                 x0, y0 = loop[0]
+                if mesh is not None and (x0, y0) != (prev_x, prev_y):
+                    # The XY traverse at ``clearance_height`` that brings the
+                    # tool to this start point: the program's first rapid
+                    # travels it from the machine start position, every later
+                    # one from the previous loop's exit retract (both sit at
+                    # ``clearance_height``).  Checked BEFORE it is emitted,
+                    # for the same reason as the entry column - a refusal has
+                    # to happen before the tool moves.  A zero-length
+                    # traverse is no travel at all and is not counted.
+                    #
+                    # The chord is only measured when the source is a mesh:
+                    # a ``profile``/stock source is prismatic, and for a
+                    # prism the question is not a geometry question at all -
+                    # see "Honest limits" in the module docstring.
+                    traverse_checks += 1
+                    bands = blocked_chord(mesh, prev_x, prev_y, x0, y0,
+                                          clearance, mesh_bounds)
+                    if bands:
+                        run = math.hypot(x0 - prev_x, y0 - prev_y)
+                        ux, uy = ((x0 - prev_x) / run,
+                                  (y0 - prev_y) / run)
+                        where = ", ".join(
+                            f"(x{prev_x + ux * a:g}, y{prev_y + uy * a:g})"
+                            f"..(x{prev_x + ux * b:g}, "
+                            f"y{prev_y + uy * b:g})"
+                            for a, b in bands)
+                        src = (f"the program start (x{prev_x:g}, "
+                               f"y{prev_y:g})" if prev_is_start
+                               else f"(x{prev_x:g}, y{prev_y:g})")
+                        traverse_violations.append(
+                            f"XY traverse at Z{clearance:g} from {src} to "
+                            f"(x{x0:g}, y{y0:g}) passes through material in "
+                            f"{where} (pass z={fp.z:g}, "
+                            f"loop {index} of {len(fp.loops)})")
                 if mesh is not None:
                     # Both vertical spans the entry travels at (x0, y0): the
                     # rapid from ``clearance_height`` to ``z_prev`` and the
@@ -2046,29 +2347,65 @@ class WaterlineFinishingStrategy(BaseStrategy):
                     _cut(start, feed_cutting)
                     pos = start
                 _rapid(Vec3(pos.x, pos.y, clearance))
+                # Every loop leaves at ``clearance_height`` from where it
+                # ended, so that is the far end of the NEXT traverse.
+                prev_x, prev_y = pos.x, pos.y
+                prev_is_start = False
                 z_prev = fp.z
 
-        if clearance_violations:
-            # DECISION (t_3b02b4a3): refuse with a named move rather than
-            # emit, and rather than "retract to a verified-clear height"
-            # first - see the module docstring: the obstruction IS the
-            # column, so no height at that XY is both clear and reachable.
-            more = (f"  (+{len(clearance_violations) - 1} more)"
-                    if len(clearance_violations) > 1 else "")
+        if clearance_violations or traverse_violations:
+            # DECISION (t_3b02b4a3, and the SAME decision for the traverse,
+            # t_6020987d): refuse with a named move rather than emit.  For
+            # the column there is no height to retract to - the obstruction
+            # IS the column.  For the chord the alternative the card allows,
+            # re-routing it, would mean either inventing a traverse plane
+            # ABOVE the user's own ``clearance_height`` (this module cannot
+            # bound the machine's Z limit, and silently overriding a
+            # user-declared safety plane is not a guard's job) or planning a
+            # free path around the part in XY (a path-planning problem, not
+            # a clearance check).  The chord is not part of the cut, so the
+            # actionable fix belongs to the caller: raise the clearance plane
+            # above what the traverse crosses - which is exactly what F1's
+            # export-time guard tells the same user about a clearance plane
+            # below the stock top.
+            #
+            # Entry-column violations are listed FIRST so the wording and
+            # the ordering t_3b02b4a3's tests pin keep their meaning; a
+            # traversal-only refusal gets a header that names both guards.
+            violations = clearance_violations + traverse_violations
+            more = (f"  (+{len(violations) - 1} more)"
+                    if len(violations) > 1 else "")
+            if not traverse_violations:
+                error = (
+                    f"rapid clearance: the tool would descend through "
+                    f"material at a loop start point "
+                    f"({len(violations)} offending move(s), "
+                    f"the XY column is not clear between "
+                    f"clearance_height and the cutting level).  First: "
+                    f"{violations[0]}{more}")
+            else:
+                kinds = []
+                if clearance_violations:
+                    kinds.append("the XY column at a loop start point is "
+                                 "not clear between clearance_height and "
+                                 "the cutting level")
+                kinds.append("an XY traverse at clearance_height crosses "
+                             "material")
+                error = (
+                    f"rapid clearance: the tool would move through material "
+                    f"({len(violations)} offending move(s): "
+                    f"{'; '.join(kinds)}).  First: "
+                    f"{violations[0]}{more}")
             return ToolpathData(
                 name="Waterline Finishing",
                 tool=tool,
                 strategy=self.name,
                 params={
-                    "error": (
-                        f"rapid clearance: the tool would descend through "
-                        f"material at a loop start point "
-                        f"({len(clearance_violations)} offending move(s), "
-                        f"the XY column is not clear between "
-                        f"clearance_height and the cutting level).  First: "
-                        f"{clearance_violations[0]}{more}"),
+                    "error": error,
                     "clearance_violations": clearance_violations,
                     "clearance_checks": clearance_checks,
+                    "traverse_violations": traverse_violations,
+                    "traverse_checks": traverse_checks,
                     "profile_source": source_seen.get("v", "stock"),
                 },
             )
@@ -2102,6 +2439,11 @@ class WaterlineFinishingStrategy(BaseStrategy):
             # error ToolpathData above instead).
             "clearance_checks": clearance_checks,
             "clearance_violations": clearance_violations,
+            # ...and the same two numbers for the XY traverses at
+            # ``clearance_height`` (0 for a prismatic source, which is never
+            # chord-checked).
+            "traverse_checks": traverse_checks,
+            "traverse_violations": traverse_violations,
             "moves": len(moves),
         }
         return ToolpathData(
